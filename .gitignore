@@ -1,0 +1,12 @@
+# Virtual environment
+.venv/
+
+# Pytest cache
+.pytest_cache/
+__pycache__/
+
+# Tests
+tests/
+
+# macOS
+.DS_Store
