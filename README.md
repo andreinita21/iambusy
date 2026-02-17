@@ -12,7 +12,7 @@
 
 -   **Smart Scheduling**: Automatically toggles between Odd and Even week schedules based on a configurable start date.
 -   **Real-Time Status**: Instantly see if you are currently in a course or on a break, with a precise countdown to the next event.
--   **Day Navigation**: Easily check your schedule for any past or future date with the intuitive day slider.
+-   **Day Navigation**: Seamlessly switch between days using the **Previous/Next arrows**, or jump to any specific date by clicking the **Calendar Date Picker** hidden within the date header.
 -   **Visual Timeline**: A clean, dark-mode interface that highlights your current activity and visualizes your day with distinct blocks for courses and breaks.
 -   **Mobile Optimized**: Designed to look and feel like a native app on your phone.
 
@@ -39,12 +39,8 @@ Follow these steps to get your own schedule up and running in minutes.
     ```
 
 3.  **Configure your schedule**
-    Copy the example configuration file:
-    ```bash
-    cp schedule_config.example.py schedule_config.py
-    ```
-    Open `schedule_config.py` and customize:
-    -   `USER_NAME`: Your name.
+    Open `app.py` and customize the `SCHEDULE_ODD` and `SCHEDULE_EVEN` dictionaries directly.
+
     -   `ACADEMIC_WEEK1_START`: The start date of your academic year.
     -   `SCHEDULE_ODD` / `SCHEDULE_EVEN`: Your weekly courses.
 
@@ -57,11 +53,11 @@ python app.py
 ```
 
 Open your browser and navigate to:
-`http://localhost:2025`
+`http://localhost:2026`
 
 ## 🛠️ Configuration
 
-The `schedule_config.py` file is the heart of the application. Here's how to structure your data:
+Configuration is now handled directly in `app.py`. Here's how to structure your data:
 
 ```python
 SCHEDULE_ODD = {

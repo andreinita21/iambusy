@@ -1,60 +1,240 @@
 <!DOCTYPE html>
 <html lang="ro">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>{{ context.user_name }}'s Schedule</title>
+    <title>Andrei's Schedule</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
-      body { background:#161b22; color:#e6edf3; font-family:sans-serif; }
-      .container { max-width:400px; margin:0 auto; padding:12px; }
-      .week-label { text-align:center; margin-top:16px; font-weight:600; font-size:1.2em; }
-      .status-main { text-align:center; font-size:1.12em; margin:1.2em 0 0.4em 0; }
-      .status-sub { text-align:center; opacity:0.8; margin-bottom:0.6em; }
-      .timing { text-align:center; font-size:1.2em; margin-bottom:1.3em; letter-spacing:1px; }
-      .schedule-block { border-radius:13px; margin:7px 0; padding:10px 14px; display:flex; flex-direction:column; border:2px solid #344; background:#222b; transition:border-color 0.5s, box-shadow 0.5s; }
-      .course { border-color: #ff4343; box-shadow:0 0 13px #ff434359; }
-      .break {  border-color: #48e77f; box-shadow:0 0 10px #48e77f33; }
-      .schedule-block.current {  background:#222c44; border-width: 3px; }
-      .time-label { font-weight:500; }
-      @media (max-width:430px) { .container { max-width:100vw; padding:4vw; } }
-      /* Small animation for block highlight */
-      .fade-in { animation: fadeIn .8s; }
-      @keyframes fadeIn { from { opacity:0; transform:scale(0.96);} to {opacity:1; transform:scale(1);} }
-      
-      /* Date Navigation */
-      .date-nav { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:1.3em; background: #222b; padding: 10px; border-radius: 12px; border: 1px solid #344; }
-      .nav-arrow { text-decoration:none; color:#e6edf3; padding:5px 15px; font-weight:bold; font-size: 1.2em; user-select: none; }
-      .nav-arrow:hover { background: #344; border-radius: 8px; }
-      .date-display { font-weight:600; }
+        body {
+            background: #161b22;
+            color: #e6edf3;
+            font-family: sans-serif;
+        }
+
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 12px;
+        }
+
+        .week-label {
+            text-align: center;
+            margin-top: 16px;
+            font-weight: 600;
+            font-size: 1.2em;
+        }
+
+        .status-main {
+            text-align: center;
+            font-size: 1.12em;
+            margin: 1.2em 0 0.4em 0;
+        }
+
+        .status-sub {
+            text-align: center;
+            opacity: 0.8;
+            margin-bottom: 0.6em;
+        }
+
+        .timing {
+            text-align: center;
+            font-size: 1.2em;
+            margin-bottom: 1.3em;
+            letter-spacing: 1px;
+        }
+
+        .schedule-block {
+            border-radius: 13px;
+            margin: 7px 0;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            border: 2px solid #344;
+            background: #222b;
+            transition: border-color 0.5s, box-shadow 0.5s;
+        }
+
+        .course {
+            border-color: #ff4343;
+            box-shadow: 0 0 13px #ff434359;
+        }
+
+        .break {
+            border-color: #48e77f;
+            box-shadow: 0 0 10px #48e77f33;
+        }
+
+        .schedule-block.current {
+            background: #222c44;
+            border-width: 3px;
+        }
+
+        .time-label {
+            font-weight: 500;
+        }
+
+        @media (max-width:430px) {
+            .container {
+                max-width: 100vw;
+                padding: 4vw;
+            }
+        }
+
+        /* Small animation for block highlight */
+        .fade-in {
+            animation: fadeIn .8s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.96);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .subject {
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        .room {
+            font-weight: 400;
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        .nav-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .nav-arrow {
+            color: #e6edf3;
+            text-decoration: none;
+            padding: 5px 15px;
+            background: #222b;
+            border-radius: 8px;
+            border: 1px solid #344;
+        }
+
+        .date-header {
+            position: relative;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .date-header:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .calendar-icon {
+            display: flex;
+            opacity: 0.8;
+        }
+
+        .date-input-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
     </style>
 </head>
-<body>
-<div class="container">
-    <div class="date-nav">
-        <a href="/?date={{ context.prev_date }}" class="nav-arrow">&lt;</a>
-        <span class="date-display">{{ context.date_display }}</span>
-        <a href="/?date={{ context.next_date }}" class="nav-arrow">&gt;</a>
-    </div>
-    <div class="week-label" id="week-label">{{ context.week_label }}</div>
-    <div class="status-main" id="status-main">{{ context.status_main }}</div>
-    <div class="status-sub" id="status-sub">{{ context.status_sub }}</div>
-    <div class="timing" id="current-time">{{ context.now }}</div>
 
-    <div id="schedule-list">
-        {% for b in context.blocks %}
-            <div class="schedule-block {{ 'course' if b.type == 'course' else 'break' }} {{ 'current fade-in' if b.is_current else '' }}">
+<body>
+    <div class="container">
+        <div class="week-label" id="week-label">{{ context.week_label }}</div>
+        <div class="status-main" id="status-main">{{ context.status_main }}</div>
+        <div class="status-sub" id="status-sub">{{ context.status_sub }}</div>
+        <div class="nav-row">
+            <a href="{{ context.prev_link }}" class="nav-arrow">&lt;</a>
+            <div id="date-header" class="date-header">
+                <span class="date-text">{{ context.today_label }} ({{ context.view_date_str }})</span>
+                <span class="calendar-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                </span>
+                <!-- Hidden input for date picker -->
+                <input type="date" id="date-picker" value="{{ context.view_date_iso }}" class="date-input-overlay">
+            </div>
+            <a href="{{ context.next_link }}" class="nav-arrow">&gt;</a>
+        </div>
+        <div class="timing" id="current-time">{{ context.now }}</div>
+
+        <div id="schedule-list">
+            {% for b in context.blocks %}
+            <div
+                class="schedule-block {{ 'course' if b.type == 'course' else 'break' }} {{ 'current fade-in' if b.is_current else '' }}">
                 <div class="time-label">{{ b.start }} – {{ b.end }}</div>
                 {% if b.type == 'course' %}
-                <div class="title">{{ b.title }}</div>
+                <div class="subject">{{ b.subject }}</div>
+                {% if b.room %}
+                <div class="room">{{ b.room }}</div>
+                {% endif %}
                 {% else %}
-                <div class="title">Liber</div>
+                <div class="title">Pauză</div>
                 {% endif %}
             </div>
-        {% endfor %}
+            {% endfor %}
+        </div>
     </div>
-</div>
-<script src="/static/schedule.js"></script>
-</body>
-</html>
+    <script src="/static/schedule.js"></script>
+    <script>
+        const datePicker = document.getElementById('date-picker');
+        const dateHeader = document.getElementById('date-header');
 
+        // Listen for date changes
+        datePicker.addEventListener('change', (e) => {
+            if (e.target.value) {
+                window.location.href = '?date=' + e.target.value;
+            }
+        });
+
+        // Trigger picker on click
+        dateHeader.addEventListener('click', () => {
+            try {
+                if (typeof datePicker.showPicker === 'function') {
+                    datePicker.showPicker();
+                } else {
+                    // Fallback for browsers not supporting showPicker
+                    // Temporarily enable pointer events and click
+                    // This is a last resort and might not work perfectly on all desktop browsers
+                    datePicker.style.pointerEvents = 'auto';
+                    datePicker.focus();
+                    datePicker.click();
+                    datePicker.style.pointerEvents = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to show date picker:', error);
+            }
+        });
+    </script>
+</body>
+
+</html>
