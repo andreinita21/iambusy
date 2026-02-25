@@ -19,6 +19,7 @@ from schedule_engine import (
     DAYS,
     build_day_timeline,
     compute_status,
+    find_next_activity,
     is_odd_week,
     prepare_blocks_for_ui,
 )
@@ -52,10 +53,15 @@ def index():
     schedule = SCHEDULE_ODD if week_is_odd else SCHEDULE_EVEN
     timeline = build_day_timeline(schedule, view_date)
 
+    # ── next-activity look-ahead ─────────────────────────────
+    next_act = find_next_activity(
+        SCHEDULE_ODD, SCHEDULE_EVEN, ACADEMIC_WEEK1_START, view_date,
+    )
+
     # ── status derivation ────────────────────────────────────
     if view_date == now.date():
         status_main, status_sub, current_block = compute_status(
-            now, timeline, USER_NAME,
+            now, timeline, USER_NAME, next_activity=next_act,
         )
     else:
         status_main = f"Program pentru {view_date.strftime('%d.%m.%Y')}"

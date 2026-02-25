@@ -15,7 +15,7 @@ from datetime import date
 USER_NAME: str = "Andrei"
 
 # ───────────── academic calendar (week-1 start) ──
-ACADEMIC_WEEK1_START: date = date(2025, 10, 29)
+ACADEMIC_WEEK1_START: date = date(2026, 2, 23)
 
 # ──────────────────────── application settings ──
 APP_PORT: int = 2026

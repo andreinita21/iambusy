@@ -9,85 +9,94 @@
 /* ── Design Tokens ───────────────────────────────────────────── */
 :root {
   /* Color palette — deep navy dark mode */
-  --color-bg-primary:     #0d1117;
-  --color-bg-secondary:   #161b22;
-  --color-bg-card:        rgba(22, 27, 34, 0.85);
-  --color-bg-glass:       rgba(30, 38, 50, 0.65);
-  --color-bg-hover:       rgba(255, 255, 255, 0.06);
-  --color-bg-current:     rgba(56, 114, 255, 0.10);
+  --color-bg-primary: #0d1117;
+  --color-bg-secondary: #161b22;
+  --color-bg-card: rgba(22, 27, 34, 0.85);
+  --color-bg-glass: rgba(30, 38, 50, 0.65);
+  --color-bg-hover: rgba(255, 255, 255, 0.06);
+  --color-bg-current: rgba(56, 114, 255, 0.10);
 
-  --color-text-primary:   #e6edf3;
+  --color-text-primary: #e6edf3;
   --color-text-secondary: #8b949e;
-  --color-text-muted:     #6e7681;
+  --color-text-muted: #6e7681;
 
-  --color-border:         rgba(48, 54, 61, 0.8);
-  --color-border-course:  #f85149;
-  --color-border-break:   #3fb950;
+  --color-border: rgba(48, 54, 61, 0.8);
+  --color-border-course: #f85149;
+  --color-border-break: #3fb950;
   --color-border-current: #58a6ff;
 
-  --color-accent-red:     #f85149;
-  --color-accent-green:   #3fb950;
-  --color-accent-blue:    #58a6ff;
-  --color-accent-purple:  #bc8cff;
+  --color-accent-red: #f85149;
+  --color-accent-green: #3fb950;
+  --color-accent-blue: #58a6ff;
+  --color-accent-purple: #bc8cff;
 
-  --color-glow-red:       rgba(248, 81, 73, 0.22);
-  --color-glow-green:     rgba(63, 185, 80, 0.18);
-  --color-glow-blue:      rgba(88, 166, 255, 0.20);
+  --color-glow-red: rgba(248, 81, 73, 0.22);
+  --color-glow-green: rgba(63, 185, 80, 0.18);
+  --color-glow-blue: rgba(88, 166, 255, 0.20);
 
   /* Spacing — 4px base scale */
-  --space-1:  4px;
-  --space-2:  8px;
-  --space-3:  12px;
-  --space-4:  16px;
-  --space-5:  20px;
-  --space-6:  24px;
-  --space-7:  28px;
-  --space-8:  32px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
 
   /* Typography — modular scale 1.25 (Major Third) */
-  --font-family:  'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-xs:      0.75rem;    /* 12px */
-  --font-sm:      0.875rem;   /* 14px */
-  --font-base:    1rem;       /* 16px */
-  --font-md:      1.125rem;   /* 18px */
-  --font-lg:      1.25rem;    /* 20px */
-  --font-xl:      1.5rem;     /* 24px */
-  --font-2xl:     1.75rem;    /* 28px */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-xs: 0.75rem;
+  /* 12px */
+  --font-sm: 0.875rem;
+  /* 14px */
+  --font-base: 1rem;
+  /* 16px */
+  --font-md: 1.125rem;
+  /* 18px */
+  --font-lg: 1.25rem;
+  /* 20px */
+  --font-xl: 1.5rem;
+  /* 24px */
+  --font-2xl: 1.75rem;
+  /* 28px */
 
-  --weight-regular:  400;
-  --weight-medium:   500;
+  --weight-regular: 400;
+  --weight-medium: 500;
   --weight-semibold: 600;
-  --weight-bold:     700;
+  --weight-bold: 700;
 
-  --leading-tight:   1.25;
-  --leading-normal:  1.5;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
 
   /* Border radius — consistent scale */
-  --radius-sm:  6px;
-  --radius-md:  10px;
-  --radius-lg:  16px;
-  --radius-xl:  20px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
   /* Shadows */
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-glow: 0 0 20px;
 
   /* Transitions */
-  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
-  --duration-fast:   150ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 150ms;
   --duration-normal: 250ms;
-  --duration-slow:   400ms;
+  --duration-slow: 400ms;
 }
 
 
 /* ── Reset & Base ────────────────────────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -175,6 +184,8 @@ body::before {
   align-items: center;
   margin: var(--space-6) 0 var(--space-3);
   gap: var(--space-3);
+  position: relative;
+  /* anchor for the absolute date input */
 }
 
 .nav-arrow {
@@ -195,6 +206,9 @@ body::before {
   transition: all var(--duration-normal) var(--ease-out);
   flex-shrink: 0;
   user-select: none;
+  position: relative;
+  z-index: 2;
+  /* arrows sit above the date input */
 }
 
 .nav-arrow:hover {
@@ -208,22 +222,22 @@ body::before {
   transform: scale(0.95);
 }
 
-.date-header {
-  position: relative;
-  cursor: pointer;
+/* Visual date text — clickable; JS opens the native picker */
+.date-display {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
-  transition: background var(--duration-fast) var(--ease-out);
   flex: 1;
   min-width: 0;
+  cursor: pointer;
+  transition: opacity var(--duration-fast);
 }
 
-.date-header:hover {
-  background: var(--color-bg-hover);
+.date-display:hover {
+  opacity: 0.8;
 }
 
 .date-text {
@@ -243,19 +257,19 @@ body::before {
   transition: color var(--duration-fast);
 }
 
-.date-header:hover .calendar-icon {
-  color: var(--color-accent-blue);
-}
-
-.date-input-overlay {
+/*
+ * Native date input — hidden off-screen.
+ * JS calls showPicker() on it when the date-display is clicked.
+ */
+.date-native-input {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
   opacity: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
   pointer-events: none;
-  z-index: 10;
+  /* prevents iOS zoom-on-focus */
+  font-size: 16px;
 }
 
 
@@ -392,6 +406,7 @@ body::before {
     opacity: 0;
     transform: translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -399,10 +414,13 @@ body::before {
 }
 
 @keyframes pulse-dot {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
     box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.4);
   }
+
   50% {
     opacity: 0.7;
     box-shadow: 0 0 0 6px rgba(88, 166, 255, 0);
@@ -414,16 +432,45 @@ body::before {
 }
 
 /* Staggered entrance for schedule blocks */
-.schedule-block:nth-child(1)  { animation-delay: 0ms; }
-.schedule-block:nth-child(2)  { animation-delay: 40ms; }
-.schedule-block:nth-child(3)  { animation-delay: 80ms; }
-.schedule-block:nth-child(4)  { animation-delay: 120ms; }
-.schedule-block:nth-child(5)  { animation-delay: 160ms; }
-.schedule-block:nth-child(6)  { animation-delay: 200ms; }
-.schedule-block:nth-child(7)  { animation-delay: 240ms; }
-.schedule-block:nth-child(8)  { animation-delay: 280ms; }
-.schedule-block:nth-child(9)  { animation-delay: 320ms; }
-.schedule-block:nth-child(10) { animation-delay: 360ms; }
+.schedule-block:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.schedule-block:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.schedule-block:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.schedule-block:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.schedule-block:nth-child(5) {
+  animation-delay: 160ms;
+}
+
+.schedule-block:nth-child(6) {
+  animation-delay: 200ms;
+}
+
+.schedule-block:nth-child(7) {
+  animation-delay: 240ms;
+}
+
+.schedule-block:nth-child(8) {
+  animation-delay: 280ms;
+}
+
+.schedule-block:nth-child(9) {
+  animation-delay: 320ms;
+}
+
+.schedule-block:nth-child(10) {
+  animation-delay: 360ms;
+}
 
 .schedule-list .schedule-block {
   animation: fade-in-up 0.5s var(--ease-out) both;

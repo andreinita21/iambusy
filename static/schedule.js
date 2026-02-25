@@ -4,7 +4,7 @@
  * Features:
  *  • Live clock that updates every second
  *  • Auto-scroll to the current schedule block on load
- *  • Date-picker integration (click the date header)
+ *  • Native date-picker navigation (change event only)
  */
 
 (function () {
@@ -45,39 +45,30 @@
     scrollToCurrentBlock();
 
 
-    // ── Date Picker Integration ─────────────────────────────────
+    // ── Date Picker ─────────────────────────────────────────────
+    // The <input type="date"> is hidden. We open it programmatically
+    // via showPicker() when the user clicks/taps the visible date
+    // display area. This is far more reliable than the opacity-0
+    // overlay approach which silently fails in many browsers.
     const datePicker = document.getElementById('date-picker');
-    const dateHeader = document.getElementById('date-header');
+    const dateDisplay = document.getElementById('date-display');
 
-    if (datePicker && dateHeader) {
-        // Navigate on date change
-        datePicker.addEventListener('change', function (e) {
-            if (e.target.value) {
-                window.location.href = '?date=' + e.target.value;
+    if (datePicker && dateDisplay) {
+        // Open native picker when date area is clicked
+        dateDisplay.addEventListener('click', function () {
+            try {
+                datePicker.showPicker();
+            } catch (_) {
+                // Fallback for browsers without showPicker()
+                datePicker.focus();
+                datePicker.click();
             }
         });
 
-        // Open picker on click / keyboard
-        function openDatePicker() {
-            try {
-                if (typeof datePicker.showPicker === 'function') {
-                    datePicker.showPicker();
-                } else {
-                    datePicker.style.pointerEvents = 'auto';
-                    datePicker.focus();
-                    datePicker.click();
-                    datePicker.style.pointerEvents = 'none';
-                }
-            } catch (err) {
-                console.warn('[IamBusy] Date picker not available:', err.message);
-            }
-        }
-
-        dateHeader.addEventListener('click', openDatePicker);
-        dateHeader.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                openDatePicker();
+        // Navigate when a date is selected
+        datePicker.addEventListener('change', function (e) {
+            if (e.target.value) {
+                window.location.href = '?date=' + e.target.value;
             }
         });
     }

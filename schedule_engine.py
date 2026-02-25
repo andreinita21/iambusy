@@ -67,8 +67,60 @@ def is_odd_week(academic_start: date, check_date: Optional[date] = None) -> bool
     """
     if check_date is None:
         check_date = datetime.now().date()
-    week_num = (check_date - academic_start).days // 7
+    # Snap both dates to their Monday so that the entire week shares the
+    # same parity — prevents the odd/even flag from flipping mid-week.
+    monday_of_check = check_date - timedelta(days=check_date.weekday())
+    monday_of_start = academic_start - timedelta(days=academic_start.weekday())
+    week_num = (monday_of_check - monday_of_start).days // 7
     return week_num % 2 == 0
+
+
+# ────────────────────────── next-activity look-ahead ──
+def find_next_activity(
+    schedule_odd: dict[str, list[tuple[str, str, str]]],
+    schedule_even: dict[str, list[tuple[str, str, str]]],
+    academic_start: date,
+    from_date: date,
+) -> Optional[dict]:
+    """Find the first course on the next workday after *from_date*.
+
+    Skips weekends: Fri/Sat/Sun all jump to Monday.
+
+    Returns
+    -------
+    ``{"day_name": str, "date": date, "start_time": str}`` or *None*
+    if no courses are found within the next 7 days.
+    """
+    for offset in range(1, 8):  # look up to 7 days ahead
+        candidate = from_date + timedelta(days=offset)
+        weekday = candidate.weekday()  # 0=Mon … 6=Sun
+
+        # Skip Saturday (5) and Sunday (6)
+        if weekday >= 5:
+            continue
+
+        odd = is_odd_week(academic_start, candidate)
+        schedule = schedule_odd if odd else schedule_even
+        day_name = DAYS[weekday]
+        entries = schedule.get(day_name, [])
+
+        # Find the earliest valid course
+        earliest_start: Optional[str] = None
+        for entry in entries:
+            if not validate_schedule_entry(entry):
+                continue
+            _, start_str, _ = entry
+            if earliest_start is None or start_str < earliest_start:
+                earliest_start = start_str
+
+        if earliest_start:
+            return {
+                "day_name": day_name,
+                "date": candidate,
+                "start_time": earliest_start,
+            }
+
+    return None
 
 
 # ─────────────────────────────────────── timeline construction ──
@@ -153,17 +205,59 @@ def compute_status(
     now_dt: datetime,
     timeline: list[dict],
     user_name: str = "Andrei",
+    next_activity: Optional[dict] = None,
 ) -> tuple[str, str, Optional[dict]]:
     """Derive a human-readable status from the current time and timeline.
+
+    Parameters
+    ----------
+    next_activity:
+        Result of :func:`find_next_activity`, used when today's courses
+        are finished to show when the next day's activity starts.
 
     Returns
     -------
     (status_main, status_sub, current_block)
         *current_block* is *None* only when the timeline is empty.
     """
-    if not timeline:
-        return f"{user_name} nu are cursuri azi.", "", None
+    # ── helper: build a "free until next day" message ──
+    def _free_until_next(na: Optional[dict]) -> tuple[str, str]:
+        if na is None:
+            return f"{user_name} e liber.", ""
+        return (
+            f"{user_name} e liber până {na['day_name']} la {na['start_time']}.",
+            "",
+        )
 
+    # No courses at all today
+    if not timeline:
+        main, sub = _free_until_next(next_activity)
+        return main, sub, None
+
+    # Collect only the course blocks
+    courses = [b for b in timeline if b["type"] == "course"]
+
+    # If there are no courses (only breaks), treat as free day
+    if not courses:
+        main, sub = _free_until_next(next_activity)
+        return main, sub, None
+
+    # Check if all courses are finished
+    last_course_end = max(c["end_dt"] for c in courses)
+    if now_dt >= last_course_end:
+        # Today's schedule is done — show next activity
+        main, sub = _free_until_next(next_activity)
+        # Current block is the trailing break
+        current_block = None
+        for blk in timeline:
+            if blk["start_dt"] <= now_dt < blk["end_dt"]:
+                current_block = blk
+                break
+        if current_block is None:
+            current_block = timeline[-1]
+        return main, sub, current_block
+
+    # Normal case: find which block we are in right now
     current_block: Optional[dict] = None
     for blk in timeline:
         if blk["start_dt"] <= now_dt < blk["end_dt"]:
