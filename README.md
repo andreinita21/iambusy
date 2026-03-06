@@ -2,6 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-3.0+-000000?style=for-the-badge&logo=flask&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 **IamBusy** is a sleek, mobile-first web application designed to keep your university schedule organized and accessible. It automatically detects odd/even weeks, displays your daily timeline, and provides real-time status updates so you (and others) know exactly when you're free.
@@ -17,27 +18,43 @@
 -   **Visual Timeline**: A modern dark-mode interface with glassmorphism cards, accent borders, and micro-animations.
 -   **Mobile Optimized**: Designed to look and feel like a native app on your phone.
 
+### 🗓️ Schedule Management
+
+A full-featured management page (`/manage`) lets you take control of your schedule:
+
+-   **Weekly Grid View**: See all your activities laid out on a 7-day × 15-hour grid, with separate tabs for Odd and Even weeks.
+-   **Add Activities**: Click any empty cell or use the **+** button to add a new activity with a name, day, time, and week type.
+-   **Edit Activities**: Click on any existing activity card to edit its details.
+-   **Drag & Drop**: Grab any activity card and drag it to a new time slot or day — duration is preserved automatically.
+-   **Delete Activities**: Remove activities with a single click and confirmation dialog.
+-   **Conflict Detection**: When adding or moving an activity into an occupied time slot, a warning dialog shows the conflicting activities and gives you two options:
+    -   **Delete the conflicting activity** and proceed with the save.
+    -   **Choose another time** and go back to the form.
+-   **Smart Defaults**: Setting a start time automatically sets the end time to +2 hours.
+-   **Persistent Storage**: All changes are saved to a local SQLite database, seeded from your `schedule_config.py` on first run.
+
 ## 🏗️ Architecture
 
 ```
 iambusy/
-├── app.py                    # Flask HTTP layer (thin controller)
+├── app.py                    # Flask HTTP layer + REST API
+├── db.py                     # SQLite database layer (CRUD + conflict detection)
 ├── schedule_engine.py        # Business logic (week parity, timeline, status)
-├── schedule_config.py        # Your schedule data (user-editable)
+├── schedule_config.py        # Your schedule data (user-editable, seeds DB on first run)
 ├── schedule_config.example.py
 ├── static/
 │   ├── style.css             # Design system (tokens, components, animations)
-│   └── schedule.js           # Live clock, auto-scroll, date picker
+│   ├── schedule.js           # Live clock, auto-scroll, date picker
+│   └── manage.js             # Schedule management UI (grid, drag & drop, modals)
 ├── templates/
-│   └── index.html            # Jinja2 template (semantic HTML5)
-├── tests/
-│   └── test_schedule_engine.py  # 30 unit tests
-├── .gitignore                # Excludes .venv, .pytest_cache, tests/
+│   ├── index.html            # Daily schedule view
+│   └── manage.html           # Schedule management page
+├── .gitignore
 ├── requirements.txt
 └── README.md
 ```
 
-> **Note:** `.venv/`, `.pytest_cache/`, `__pycache__/`, `tests/`, and `.DS_Store` are excluded from version control via `.gitignore`.
+> **Note:** `schedule.db`, `.venv/`, `__pycache__/`, and `.DS_Store` are excluded from version control via `.gitignore`.
 
 ## 🚀 Getting Started
 
@@ -49,8 +66,8 @@ iambusy/
 
 1.  **Clone the repository**
     ```bash
-    git clone https://github.com/andreinita21/IamBusy.git
-    cd IamBusy
+    git clone https://github.com/andreinita21/iambusy.git
+    cd iambusy
     ```
 
 2.  **Create a virtual environment & install dependencies**
@@ -76,11 +93,17 @@ python app.py
 
 Open your browser at: `http://localhost:2026`
 
-### Running Tests
+To manage your schedule, click **⚙️ Manage Schedule** in the footer or go directly to `http://localhost:2026/manage`.
 
-```bash
-python -m pytest tests/ -v
-```
+### API Endpoints
+
+| Method   | Path                     | Description                        |
+|----------|--------------------------|------------------------------------|
+| `GET`    | `/api/activities`        | List all activities (JSON)         |
+| `POST`   | `/api/activities`        | Add a new activity                 |
+| `PUT`    | `/api/activities/<id>`   | Update / move an activity          |
+| `DELETE` | `/api/activities/<id>`   | Delete an activity                 |
+| `POST`   | `/api/conflicts`         | Check for time conflicts           |
 
 ## 🛠️ Configuration
 
@@ -98,12 +121,14 @@ SCHEDULE_ODD = {
 }
 ```
 
+On the first run, the app seeds a SQLite database from this config. After that, all changes are made through the `/manage` UI and persisted in `schedule.db`.
+
 ## 📦 Tech Stack
 
 -   **Backend**: Flask (Python)
+-   **Database**: SQLite (via `db.py`)
 -   **Frontend**: HTML5, CSS3 (Custom Design System), JavaScript
 -   **Templating**: Jinja2
--   **Testing**: pytest
 
 ## 📄 License
 
