@@ -258,6 +258,10 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -882,21 +886,23 @@ kbd {
 }
 
 @media (min-width: 640px) {
+  /* Anchored to the top so a change in content height never moves the
+     day grid under the pointer (which would re-trigger hover in a loop). */
   .cal {
-    top: 50%;
+    top: 5vh;
     bottom: auto;
     width: min(94vw, 560px);
-    max-height: 88vh;
+    max-height: 90vh;
     border-bottom: var(--bw) solid var(--ink);
     border-radius: var(--r);
     box-shadow: var(--shadow-lg);
-    transform: translate(-50%, -46%) scale(0.98);
+    transform: translate(-50%, 12px);
     opacity: 0;
     transition: transform var(--t-base), opacity var(--t-base);
   }
 
   .cal.open {
-    transform: translate(-50%, -50%) scale(1);
+    transform: translate(-50%, 0);
     opacity: 1;
   }
 }
@@ -991,9 +997,9 @@ kbd {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* No transform on hover: the cell must not move under the pointer. */
 .cal-day:hover,
 .cal-day:focus-visible {
-  transform: translate(-1px, -1px);
   box-shadow: 3px 3px 0 var(--ink);
   background: var(--card-2);
 }
@@ -1078,9 +1084,24 @@ kbd {
   flex-wrap: wrap;
 }
 
+.cal-preview-head {
+  min-height: 28px;
+}
+
 .cal-preview-title {
   font-weight: 700;
   font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Fixed height so hovering different days never changes the sheet's
+   size (and therefore never shifts the grid under the pointer). */
+.cal-preview-body {
+  height: 136px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .cal-preview-list {
@@ -1142,6 +1163,15 @@ kbd {
 
 .cal-preview-actions .btn {
   flex: 1;
+}
+
+.cal-preview-actions .btn[hidden] {
+  display: none;
+}
+
+/* Keep the actions row at a constant height even while buttons are hidden. */
+.cal-preview-actions {
+  min-height: 44px;
 }
 
 /* ═══════════════════════════════════════════════════════════════
