@@ -266,15 +266,15 @@
             // Interleave courses and the free windows between them.
             const windows = info.free_windows || [];
             acts.forEach((a, i) => {
-                pvList.appendChild(previewRow(`${a.start}–${a.end}`, a.kind || 'x',
-                    `${a.subject}${a.kind_label ? ' · ' + a.kind_label : ''}`, a.room));
+                const meta = [a.kind_label, a.room].filter(Boolean).join(' · ');
+                pvList.appendChild(previewRow(a.start, a.end, a.kind || 'x', a.subject, meta));
                 const w = windows.find(w => w.start === a.end);
                 if (w && i < acts.length - 1) {
-                    pvList.appendChild(previewRow(`${w.start}–${w.end}`, 'free', `liber · ${w.duration}`, ''));
+                    pvList.appendChild(previewRow(w.start, w.end, 'free', 'Liber', w.duration));
                 }
             });
             const last = acts[acts.length - 1];
-            pvList.appendChild(previewRow(`de la ${last.end}`, 'free', 'liber restul zilei', ''));
+            pvList.appendChild(previewRow(last.end, '', 'free', 'Liber', 'restul zilei'));
         }
 
         pvOpen.hidden = false;
@@ -296,19 +296,32 @@
         pvAdd.href = `/manage?day=${DAY_KEYS[dow]}&week=${info.parity}&start=${sStart}&end=${sEnd}`;
     }
 
-    function previewRow(time, kind, text, room) {
+    function previewRow(start, end, kind, subject, meta) {
         const li = document.createElement('li');
+        li.className = `k-${kind}`;
+
         const t = document.createElement('span');
-        t.className = `pt k-${kind}`;
-        t.textContent = time;
+        t.className = 'pt';
+        const t1 = document.createElement('b');
+        t1.textContent = start;
+        t.appendChild(t1);
+        const t2 = document.createElement('i');
+        t2.textContent = end || '→';
+        t.appendChild(t2);
+
         const s = document.createElement('span');
         s.className = 'ps';
-        s.textContent = text;
-        if (room) {
-            const r = document.createElement('small');
-            r.textContent = room;
-            s.appendChild(r);
+        const s1 = document.createElement('span');
+        s1.className = 'ps-subject';
+        s1.textContent = subject;
+        s.appendChild(s1);
+        if (meta) {
+            const s2 = document.createElement('span');
+            s2.className = 'ps-meta';
+            s2.textContent = meta;
+            s.appendChild(s2);
         }
+
         li.append(t, s);
         return li;
     }

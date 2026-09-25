@@ -1099,7 +1099,7 @@ kbd {
 /* Fixed height so hovering different days never changes the sheet's
    size (and therefore never shifts the grid under the pointer). */
 .cal-preview-body {
-  height: 136px;
+  height: 158px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1108,44 +1108,89 @@ kbd {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 0.86rem;
+  gap: 6px;
+  padding-right: 2px;
 }
 
+/* One row = [start / end] | subject + meta, with a colour stripe by kind */
 .cal-preview-list li {
   display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 8px;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
   align-items: center;
+  min-height: 44px;
+  padding: 5px 10px 5px 0;
+  border: var(--bw-thin) solid var(--ink);
+  border-left-width: 8px;
+  border-radius: var(--r-xs);
+  background: var(--card);
+}
+
+.cal-preview-list li.k-C { border-left-color: var(--c-curs); }
+.cal-preview-list li.k-S { border-left-color: var(--c-seminar); }
+.cal-preview-list li.k-L { border-left-color: var(--c-lab); }
+.cal-preview-list li.k-x { border-left-color: var(--c-busy); }
+.cal-preview-list li.k-free {
+  border-style: dashed;
+  border-left-style: solid;
+  border-left-color: var(--c-free);
+  background: transparent;
 }
 
 .cal-preview-list .pt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 52px;
+  padding-left: 10px;
+  border-right: 1.5px solid var(--line-soft);
   font-family: var(--mono);
-  font-size: 0.78rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border: 1.5px solid var(--ink);
-  border-radius: 3px;
-  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.15;
 }
 
-.cal-preview-list .pt.k-C { background: var(--c-curs); color: #111; }
-.cal-preview-list .pt.k-S { background: var(--c-seminar); color: #111; }
-.cal-preview-list .pt.k-L { background: var(--c-lab); color: #111; }
-.cal-preview-list .pt.k-free { background: var(--c-free); color: #111; border-style: dashed; }
+.cal-preview-list .pt b {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.cal-preview-list .pt i {
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+}
 
 .cal-preview-list .ps {
-  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.cal-preview-list .ps-subject {
+  font-weight: 700;
+  font-size: 0.88rem;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cal-preview-list .ps small {
+.cal-preview-list li.k-free .ps-subject {
+  color: var(--muted);
+}
+
+.cal-preview-list .ps-meta {
   font-family: var(--mono);
+  font-size: 0.7rem;
   font-weight: 500;
   color: var(--muted);
-  margin-left: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cal-preview-empty {
