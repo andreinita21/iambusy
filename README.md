@@ -14,9 +14,11 @@
 -   **Smart Scheduling**: Automatically toggles between Odd and Even week schedules based on a configurable academic start date.
 -   **Real-Time Status**: Instantly see if you are currently in a course or on a break, with a precise countdown to the next event.
 -   **Live Clock**: A prominent clock that updates every second — no need to refresh.
--   **Day Navigation**: Seamlessly switch between days using **Previous/Next arrows**, or jump to any specific date via the **Calendar Date Picker**.
--   **Visual Timeline**: A modern dark-mode interface with glassmorphism cards, accent borders, and micro-animations.
--   **Mobile Optimized**: Designed to look and feel like a native app on your phone.
+-   **Day Navigation**: Switch days with **Previous/Next arrows**, the **week strip**, keyboard (`←` `→` `T` `C`) or swipe.
+-   **Month Calendar with Busy Bars**: A custom date picker where every day shows a tiny 07:00–22:00 bar of its courses (colour-coded by type) and the academic week number. Tap a day to preview its full timeline and free windows *before* you commit to it, then open it or jump straight to "schedule something here".
+-   **Free Windows at a Glance**: Each day lists its gaps between courses, and every gap has an **Adaugă** shortcut that opens the editor pre-filled with that day, week parity and time slot.
+-   **Neobrutalist UI**: Thick borders, hard offset shadows, flat saturated colour and heavy type. Dark theme by default, light theme one click away (remembered per device).
+-   **Mobile Optimized**: Bottom-sheet calendar, swipe navigation and a horizontally scrollable weekly grid.
 
 ### 🗓️ Schedule Management
 
@@ -43,8 +45,8 @@ iambusy/
 ├── schedule_config.py        # Your schedule data (user-editable, seeds DB on first run)
 ├── schedule_config.example.py
 ├── static/
-│   ├── style.css             # Design system (tokens, components, animations)
-│   ├── schedule.js           # Live clock, auto-scroll, date picker
+│   ├── style.css             # Neobrutalist design system (tokens, components)
+│   ├── schedule.js           # Live clock, month calendar, navigation, theme
 │   └── manage.js             # Schedule management UI (grid, drag & drop, modals)
 ├── templates/
 │   ├── index.html            # Daily schedule view
@@ -104,6 +106,7 @@ To manage your schedule, click **⚙️ Manage Schedule** in the footer or go di
 | `PUT`    | `/api/activities/<id>`   | Update / move an activity          |
 | `DELETE` | `/api/activities/<id>`   | Delete an activity                 |
 | `POST`   | `/api/conflicts`         | Check for time conflicts           |
+| `GET`    | `/api/days?from=&to=`    | Per-day summaries (max 62 days) for the month calendar |
 
 ## 🛠️ Configuration
 

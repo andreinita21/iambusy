@@ -24,8 +24,11 @@ from schedule_engine import (
     format_date_ro,
     relative_day_ro,
     build_day_timeline,
+    busy_segments,
     compute_status,
+    day_summary,
     find_next_activity,
+    free_windows,
     is_odd_week,
     prepare_blocks_for_ui,
 )
@@ -127,14 +130,16 @@ def index():
     week_strip = []
     for i in range(7):
         d = monday + timedelta(days=i)
-        count = len(schedule_for(d).get(DAYS[i], []))
+        entries = schedule_for(d).get(DAYS[i], [])
         week_strip.append({
             "short": DAY_SHORT[i],
             "day": d.day,
-            "count": min(count, 4),
+            "count": len(entries),
+            "segments": busy_segments(entries),
             "link": f"?date={d.isoformat()}",
             "is_today": d == today,
             "is_selected": d == view_date,
+            "is_weekend": i >= 5,
             "label": f"{DAY_DISPLAY[DAYS[i]]}, {format_date_ro(d, long=True)}",
         })
 
@@ -142,17 +147,23 @@ def index():
     blocks_for_ui = prepare_blocks_for_ui(timeline, current_block)
     prev_date = view_date - timedelta(days=1)
     next_date = view_date + timedelta(days=1)
+    n_courses = sum(1 for b in blocks_for_ui if b["type"] == "course")
 
     context = {
         "user_name": USER_NAME,
         "state": state,
         "is_today": is_today,
-        "has_courses": any(b["type"] == "course" for b in blocks_for_ui),
+        "has_courses": n_courses > 0,
+        "n_courses": n_courses,
+        "free_windows": free_windows(timeline),
         "week_label": week_label,
+        "week_num": week_num,
         "week_parity": "odd" if week_is_odd else "even",
+        "day_key": DAYS[view_date.weekday()],
         "today_label": DAY_DISPLAY[DAYS[view_date.weekday()]],
         "view_date_str": format_date_ro(view_date, long=True),
         "view_date_iso": view_date.strftime("%Y-%m-%d"),
+        "today_iso": today.strftime("%Y-%m-%d"),
         "now": now.strftime("%H:%M:%S"),
         "status_main": status_main,
         "status_sub": status_sub,
@@ -167,12 +178,61 @@ def index():
 
 @app.route("/manage")
 def manage():
-    """Render the schedule management page."""
+    """Render the schedule management page.
+
+    Optional query parameters (``day``, ``start``, ``end``, ``week``) are
+    read client-side to pre-fill the "add activity" form — this is how the
+    daily view's "schedule something in this gap" links work.
+    """
     week_key = "odd" if is_odd_week(ACADEMIC_WEEK1_START, datetime.now().date()) else "even"
-    return render_template("manage.html", days=DAYS, day_display=DAY_DISPLAY, current_week=week_key)
+    return render_template(
+        "manage.html",
+        days=DAYS,
+        day_display=DAY_DISPLAY,
+        current_week=week_key,
+        user_name=USER_NAME,
+    )
 
 
 # ═══════════════════════════════════════════════════ JSON API ══
+
+@app.route("/api/days", methods=["GET"])
+def api_days():
+    """Per-day summaries for a date range (inclusive) — feeds the month calendar.
+
+    Query parameters
+    ----------------
+    from, to : str
+        ISO dates.  The range is capped at 62 days.
+    """
+    try:
+        start = datetime.strptime(request.args.get("from", ""), "%Y-%m-%d").date()
+        end = datetime.strptime(request.args.get("to", ""), "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "from/to must be YYYY-MM-DD"}), 400
+    if end < start:
+        return jsonify({"error": "to must be after from"}), 400
+    if (end - start).days > 62:
+        return jsonify({"error": "Range too large (max 62 days)"}), 400
+
+    schedule_odd_db = get_schedule("odd")
+    schedule_even_db = get_schedule("even")
+
+    days = []
+    d = start
+    while d <= end:
+        if d < ACADEMIC_WEEK1_START:
+            schedule = {}
+        else:
+            schedule = schedule_odd_db if is_odd_week(ACADEMIC_WEEK1_START, d) else schedule_even_db
+        days.append(day_summary(schedule, d, ACADEMIC_WEEK1_START))
+        d += timedelta(days=1)
+
+    return jsonify({
+        "today": datetime.now().date().isoformat(),
+        "academic_start": ACADEMIC_WEEK1_START.isoformat(),
+        "days": days,
+    })
 
 @app.route("/api/activities", methods=["GET"])
 def api_list_activities():

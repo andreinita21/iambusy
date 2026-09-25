@@ -356,6 +356,116 @@ def parse_block_title(full_title: str) -> tuple[str, str]:
     return full_title.strip(), ""
 
 
+def _hhmm_to_minutes(value: str) -> int:
+    """Convert ``HH:MM`` to minutes since midnight (0 on parse failure)."""
+    t = parse_time_safe(value)
+    return t.hour * 60 + t.minute if t else 0
+
+
+def _minutes_to_hhmm(total: int) -> str:
+    total = max(0, min(total, 23 * 60 + 59))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def busy_segments(
+    entries: list[tuple[str, str, str]],
+    window_start_hour: int = 7,
+    window_end_hour: int = 22,
+) -> list[dict]:
+    """Return course intervals as percentages of a daily hour window.
+
+    Used to draw the tiny "busy bar" under each day in the week strip and
+    the month calendar.  Each segment is ``{"left": %, "width": %, "kind"}``.
+    """
+    w0 = window_start_hour * 60
+    w1 = window_end_hour * 60
+    span = w1 - w0
+    segments: list[dict] = []
+    for entry in entries:
+        if not validate_schedule_entry(entry):
+            continue
+        title, start_str, end_str = entry
+        s = max(w0, _hhmm_to_minutes(start_str))
+        e = min(w1, _hhmm_to_minutes(end_str))
+        if e <= s:
+            continue
+        subject, _room = parse_block_title(title)
+        _subj, kind = split_course_type(subject)
+        segments.append({
+            "left": round((s - w0) / span * 100, 2),
+            "width": round((e - s) / span * 100, 2),
+            "kind": kind or "x",
+        })
+    return segments
+
+
+def free_windows(timeline: list[dict], min_minutes: int = 30) -> list[dict]:
+    """Return the gaps *between* courses that last at least *min_minutes*.
+
+    Leading / trailing free time is excluded — it is implied by the first
+    and last course.  Each window is ``{"start", "end", "duration"}``.
+    """
+    courses = [b for b in timeline if b["type"] == "course"]
+    if len(courses) < 2:
+        return []
+    windows: list[dict] = []
+    for prev, nxt in zip(courses, courses[1:]):
+        gap = int((nxt["start_dt"] - prev["end_dt"]).total_seconds() // 60)
+        if gap >= min_minutes:
+            windows.append({
+                "start": prev["end_dt"].strftime("%H:%M"),
+                "end": nxt["start_dt"].strftime("%H:%M"),
+                "duration": format_duration(gap),
+            })
+    return windows
+
+
+def day_summary(
+    schedule: dict[str, list[tuple[str, str, str]]],
+    target_date: date,
+    academic_start: date,
+) -> dict:
+    """Compact JSON-ready description of one calendar day.
+
+    Used by the month calendar so a user can see, before picking a date,
+    how busy that day already is.
+    """
+    day_name = DAYS[target_date.weekday()]
+    entries = schedule.get(day_name, [])
+    activities: list[dict] = []
+    for entry in sorted(entries, key=lambda e: e[1]):
+        if not validate_schedule_entry(entry):
+            continue
+        title, start_str, end_str = entry
+        subject, room = parse_block_title(title)
+        subject, kind = split_course_type(subject)
+        activities.append({
+            "start": start_str,
+            "end": end_str,
+            "subject": subject,
+            "kind": kind,
+            "kind_label": COURSE_TYPE_LABELS.get(kind, ""),
+            "room": room,
+        })
+    busy = sum(
+        _hhmm_to_minutes(a["end"]) - _hhmm_to_minutes(a["start"]) for a in activities
+    )
+    timeline = build_day_timeline(schedule, target_date)
+    week_num = academic_week_number(academic_start, target_date)
+    return {
+        "date": target_date.isoformat(),
+        "day_name": day_name,
+        "day_label": DAY_DISPLAY[day_name],
+        "week_num": week_num,
+        "parity": "odd" if is_odd_week(academic_start, target_date) else "even",
+        "in_semester": target_date >= academic_start,
+        "activities": activities,
+        "busy_minutes": busy,
+        "segments": busy_segments(entries),
+        "free_windows": free_windows(timeline),
+    }
+
+
 def prepare_blocks_for_ui(
     timeline: list[dict],
     current_block: Optional[dict],
@@ -376,7 +486,7 @@ def prepare_blocks_for_ui(
         # 23:59 is the end-of-day sentinel; count it as a full hour.
         if blk["end_dt"].time() == time(23, 59):
             minutes += 1
-        blocks.append({
+        ui = {
             "type": blk["type"],
             "title": full_title,
             "subject": subject,
@@ -389,5 +499,16 @@ def prepare_blocks_for_ui(
             "end_iso": blk["end_dt"].isoformat(),
             "duration": format_duration(minutes),
             "is_current": blk is current_block,
-        })
+        }
+        if blk["type"] == "break":
+            # Suggested slot for "schedule something here": up to 2h inside
+            # the gap, clamped to a sensible 07:00–22:00 daytime window.
+            s = blk["start_dt"].hour * 60 + blk["start_dt"].minute
+            e = blk["end_dt"].hour * 60 + blk["end_dt"].minute
+            s = max(s, 7 * 60)
+            e = min(e, 22 * 60)
+            if e - s >= 30:
+                ui["suggest_start"] = _minutes_to_hhmm(s)
+                ui["suggest_end"] = _minutes_to_hhmm(min(e, s + 120))
+        blocks.append(ui)
     return blocks
