@@ -17,7 +17,12 @@ from schedule_config import (
     USER_NAME,
 )
 from schedule_engine import (
+    DAY_DISPLAY,
+    DAY_SHORT,
     DAYS,
+    academic_week_number,
+    format_date_ro,
+    relative_day_ro,
     build_day_timeline,
     compute_status,
     find_next_activity,
@@ -66,29 +71,72 @@ def index():
         view_date = datetime.now().date()
 
     now = datetime.now()
+    today = now.date()
 
     # ── schedule selection (from DB) ─────────────────────────
-    week_is_odd = is_odd_week(ACADEMIC_WEEK1_START, view_date)
-    week_key = "odd" if week_is_odd else "even"
-    schedule = get_schedule(week_key)
-    timeline = build_day_timeline(schedule, view_date)
-
-    # ── next-activity look-ahead ─────────────────────────────
     schedule_odd_db = get_schedule("odd")
     schedule_even_db = get_schedule("even")
+
+    def schedule_for(d):
+        """Schedule dict for date *d* — empty before the academic year."""
+        if d < ACADEMIC_WEEK1_START:
+            return {}
+        return schedule_odd_db if is_odd_week(ACADEMIC_WEEK1_START, d) else schedule_even_db
+
+    week_is_odd = is_odd_week(ACADEMIC_WEEK1_START, view_date)
+    week_num = academic_week_number(ACADEMIC_WEEK1_START, view_date)
+    timeline = build_day_timeline(schedule_for(view_date), view_date)
+
+    # ── next-activity look-ahead ─────────────────────────────
     next_act = find_next_activity(
         schedule_odd_db, schedule_even_db, ACADEMIC_WEEK1_START, view_date,
     )
 
     # ── status derivation ────────────────────────────────────
-    if view_date == now.date():
+    is_today = view_date == today
+    if is_today:
         status_main, status_sub, current_block = compute_status(
             now, timeline, USER_NAME, next_activity=next_act,
         )
     else:
-        status_main = f"Program pentru {view_date.strftime('%d.%m.%Y')}"
-        status_sub = ""
+        n_courses = sum(1 for b in timeline if b["type"] == "course")
+        status_main = f"Program pentru {relative_day_ro(view_date, today)}"
+        if view_date.year != today.year:
+            status_main += f" {view_date.year}"
+        status_sub = (
+            "Nicio activitate programată." if n_courses == 0
+            else f"{n_courses} {'activitate' if n_courses == 1 else 'activități'}."
+        )
         current_block = None
+
+    if current_block is None or not is_today:
+        state = "off"
+    elif current_block["type"] == "course":
+        state = "busy"
+    else:
+        state = "free"
+
+    # ── week label ───────────────────────────────────────────
+    if week_num <= 0:
+        week_label = f"Vacanță · începe pe {format_date_ro(ACADEMIC_WEEK1_START, long=True)}"
+    else:
+        week_label = f"Săptămâna {week_num} · {'impară' if week_is_odd else 'pară'}"
+
+    # ── week strip (Mon–Sun of the viewed week) ──────────────
+    monday = view_date - timedelta(days=view_date.weekday())
+    week_strip = []
+    for i in range(7):
+        d = monday + timedelta(days=i)
+        count = len(schedule_for(d).get(DAYS[i], []))
+        week_strip.append({
+            "short": DAY_SHORT[i],
+            "day": d.day,
+            "count": min(count, 4),
+            "link": f"?date={d.isoformat()}",
+            "is_today": d == today,
+            "is_selected": d == view_date,
+            "label": f"{DAY_DISPLAY[DAYS[i]]}, {format_date_ro(d, long=True)}",
+        })
 
     # ── template context ─────────────────────────────────────
     blocks_for_ui = prepare_blocks_for_ui(timeline, current_block)
@@ -96,14 +144,21 @@ def index():
     next_date = view_date + timedelta(days=1)
 
     context = {
-        "week_label": "Săptămână impară" if week_is_odd else "Săptămână pară",
-        "today_label": DAYS[view_date.weekday()],
-        "view_date_str": view_date.strftime("%d %b %Y"),
+        "user_name": USER_NAME,
+        "state": state,
+        "is_today": is_today,
+        "has_courses": any(b["type"] == "course" for b in blocks_for_ui),
+        "week_label": week_label,
+        "week_parity": "odd" if week_is_odd else "even",
+        "today_label": DAY_DISPLAY[DAYS[view_date.weekday()]],
+        "view_date_str": format_date_ro(view_date, long=True),
         "view_date_iso": view_date.strftime("%Y-%m-%d"),
-        "now": now.strftime("%H:%M"),
+        "now": now.strftime("%H:%M:%S"),
         "status_main": status_main,
         "status_sub": status_sub,
+        "current_end_iso": current_block["end_dt"].isoformat() if (current_block and is_today) else "",
         "blocks": blocks_for_ui,
+        "week_strip": week_strip,
         "prev_link": f"?date={prev_date.strftime('%Y-%m-%d')}",
         "next_link": f"?date={next_date.strftime('%Y-%m-%d')}",
     }
@@ -113,7 +168,8 @@ def index():
 @app.route("/manage")
 def manage():
     """Render the schedule management page."""
-    return render_template("manage.html", days=DAYS)
+    week_key = "odd" if is_odd_week(ACADEMIC_WEEK1_START, datetime.now().date()) else "even"
+    return render_template("manage.html", days=DAYS, day_display=DAY_DISPLAY, current_week=week_key)
 
 
 # ═══════════════════════════════════════════════════ JSON API ══

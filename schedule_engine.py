@@ -5,6 +5,7 @@ All schedule computation, timeline building, and status derivation
 lives here, fully decoupled from Flask and the HTTP layer.
 """
 
+import re
 from datetime import datetime, timedelta, time, date
 from typing import Optional
 
@@ -19,6 +20,24 @@ COURSE_TYPE_LABELS: dict[str, str] = {
     "S": "Seminar",
     "L": "Laborator",
 }
+
+# Display names with diacritics (DB keys stay ASCII).
+DAY_DISPLAY: dict[str, str] = {
+    "Luni": "Luni", "Marti": "Marți", "Miercuri": "Miercuri", "Joi": "Joi",
+    "Vineri": "Vineri", "Sambata": "Sâmbătă", "Duminica": "Duminică",
+}
+
+DAY_SHORT: list[str] = ["L", "Ma", "Mi", "J", "V", "S", "D"]
+
+MONTHS_SHORT: list[str] = [
+    "ian", "feb", "mar", "apr", "mai", "iun",
+    "iul", "aug", "sep", "oct", "nov", "dec",
+]
+
+MONTHS_LONG: list[str] = [
+    "ianuarie", "februarie", "martie", "aprilie", "mai", "iunie",
+    "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie",
+]
 
 
 # ──────────────────────────────────────── schedule validation ──
@@ -75,6 +94,29 @@ def is_odd_week(academic_start: date, check_date: Optional[date] = None) -> bool
     return week_num % 2 == 0
 
 
+def academic_week_number(academic_start: date, check_date: date) -> int:
+    """Return the 1-based academic week of *check_date* (<= 0 before start)."""
+    monday_of_check = check_date - timedelta(days=check_date.weekday())
+    monday_of_start = academic_start - timedelta(days=academic_start.weekday())
+    return (monday_of_check - monday_of_start).days // 7 + 1
+
+
+def format_date_ro(d: date, long: bool = False) -> str:
+    """Format *d* as e.g. ``28 sep`` (or ``28 septembrie`` when *long*)."""
+    months = MONTHS_LONG if long else MONTHS_SHORT
+    return f"{d.day} {months[d.month - 1]}"
+
+
+def relative_day_ro(d: date, today: date) -> str:
+    """Return ``azi`` / ``mâine`` or ``luni, 28 sep`` relative to *today*."""
+    delta = (d - today).days
+    if delta == 0:
+        return "azi"
+    if delta == 1:
+        return "mâine"
+    return f"{DAY_DISPLAY[DAYS[d.weekday()]].lower()}, {format_date_ro(d)}"
+
+
 # ────────────────────────── next-activity look-ahead ──
 def find_next_activity(
     schedule_odd: dict[str, list[tuple[str, str, str]]],
@@ -84,15 +126,17 @@ def find_next_activity(
 ) -> Optional[dict]:
     """Find the first course on the next workday after *from_date*.
 
-    Skips weekends: Fri/Sat/Sun all jump to Monday.
+    Skips weekends and any day before the academic year starts.
 
     Returns
     -------
     ``{"day_name": str, "date": date, "start_time": str}`` or *None*
-    if no courses are found within the next 7 days.
+    if no courses are found within the next 14 days (counted from the
+    later of *from_date* and the day before *academic_start*).
     """
-    for offset in range(1, 8):  # look up to 7 days ahead
-        candidate = from_date + timedelta(days=offset)
+    base = max(from_date, academic_start - timedelta(days=1))
+    for offset in range(1, 15):  # look up to two weeks ahead
+        candidate = base + timedelta(days=offset)
         weekday = candidate.weekday()  # 0=Mon … 6=Sun
 
         # Skip Saturday (5) and Sunday (6)
@@ -224,8 +268,9 @@ def compute_status(
     def _free_until_next(na: Optional[dict]) -> tuple[str, str]:
         if na is None:
             return f"{user_name} e liber.", ""
+        when = relative_day_ro(na["date"], now_dt.date())
         return (
-            f"{user_name} e liber până {na['day_name']} la {na['start_time']}.",
+            f"{user_name} e liber până {when}, la {na['start_time']}.",
             "",
         )
 
@@ -275,15 +320,30 @@ def compute_status(
     else:
         status_main = f"{user_name} e liber până la ora {end_str}."
 
-    if minutes != 1:
-        status_sub = f"Mai sunt {minutes} minute până atunci."
-    else:
-        status_sub = "Mai este 1 minut până atunci."
+    status_sub = f"Mai sunt {format_duration(minutes)}."
 
     return status_main, status_sub, current_block
 
 
+def format_duration(minutes: int) -> str:
+    """Format a minute count as ``45 min`` / ``2h`` / ``1h 30min``."""
+    hours, mins = divmod(max(0, minutes), 60)
+    if hours and mins:
+        return f"{hours}h {mins}min"
+    if hours:
+        return f"{hours}h"
+    return f"{mins} min"
+
+
 # ──────────────────────────────── template data preparation ──
+def split_course_type(subject: str) -> tuple[str, str]:
+    """Split ``"OOP (L)"`` into ``("OOP", "L")``; type is ``""`` if absent."""
+    m = re.match(r"^(.*?)\s*\(([CSL])\)\s*$", subject)
+    if m:
+        return m.group(1), m.group(2)
+    return subject, ""
+
+
 def parse_block_title(full_title: str) -> tuple[str, str]:
     """Split a block title into (subject, room).
 
@@ -303,20 +363,31 @@ def prepare_blocks_for_ui(
     """Transform raw timeline blocks into template-ready dicts.
 
     Each returned dict has keys:
-        ``type``, ``title``, ``subject``, ``room``, ``start``, ``end``,
+        ``type``, ``title``, ``subject``, ``kind``, ``kind_label``, ``room``,
+        ``start``, ``end``, ``start_iso``, ``end_iso``, ``duration``,
         ``is_current``.
     """
     blocks: list[dict] = []
     for blk in timeline:
         full_title = blk.get("title", "")
         subject, room = parse_block_title(full_title)
+        subject, kind = split_course_type(subject)
+        minutes = int((blk["end_dt"] - blk["start_dt"]).total_seconds() // 60)
+        # 23:59 is the end-of-day sentinel; count it as a full hour.
+        if blk["end_dt"].time() == time(23, 59):
+            minutes += 1
         blocks.append({
             "type": blk["type"],
             "title": full_title,
             "subject": subject,
+            "kind": kind,
+            "kind_label": COURSE_TYPE_LABELS.get(kind, ""),
             "room": room,
             "start": blk["start_dt"].strftime("%H:%M"),
             "end": blk["end_dt"].strftime("%H:%M"),
+            "start_iso": blk["start_dt"].isoformat(),
+            "end_iso": blk["end_dt"].isoformat(),
+            "duration": format_duration(minutes),
             "is_current": blk is current_block,
         })
     return blocks

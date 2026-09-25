@@ -35,9 +35,9 @@
             </div>
 
             <!-- Week type tabs -->
-            <div class="week-tabs" id="week-tabs" role="tablist">
-                <button class="week-tab active" data-week="odd" role="tab" aria-selected="true">Odd Week</button>
-                <button class="week-tab" data-week="even" role="tab" aria-selected="false">Even Week</button>
+            <div class="week-tabs" id="week-tabs" role="tablist" data-current="{{ current_week }}">
+                <button class="week-tab active" data-week="odd" role="tab" aria-selected="true">Săpt. impară</button>
+                <button class="week-tab" data-week="even" role="tab" aria-selected="false">Săpt. pară</button>
             </div>
         </header>
 
@@ -62,7 +62,7 @@
 
                 <div class="form-group">
                     <label class="form-label" for="form-title">Activity Name</label>
-                    <input class="form-input" type="text" id="form-title" placeholder="e.g. Calculus II (S) | AN204"
+                    <input class="form-input" type="text" id="form-title" placeholder="ex. OOP (L) | CJ101"
                         required>
                 </div>
 
@@ -71,7 +71,7 @@
                         <label class="form-label" for="form-day">Day</label>
                         <select class="form-select" id="form-day" required>
                             {% for d in days %}
-                            <option value="{{ d }}">{{ d }}</option>
+                            <option value="{{ d }}">{{ day_display[d] }}</option>
                             {% endfor %}
                         </select>
                     </div>

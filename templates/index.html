@@ -3,10 +3,11 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="description"
-        content="IamBusy — See Andrei's university schedule in real time. Check availability and upcoming courses.">
-    <title>IamBusy — Andrei's Schedule</title>
+        content="IamBusy — See {{ context.user_name }}'s university schedule in real time. Check availability and upcoming courses.">
+    <meta name="theme-color" content="#0d1117">
+    <title>IamBusy — {{ context.user_name }}'s Schedule</title>
 
     <!-- Design system -->
     <link rel="stylesheet" href="/static/style.css">
@@ -19,23 +20,63 @@
 <body>
     <div class="container" role="main">
 
-        <!-- ── Header ────────────────────────────────────── -->
-        <header class="header" aria-label="Schedule status">
-            <div class="week-badge" id="week-badge">{{ context.week_label }}</div>
+        <!-- ── Top bar ───────────────────────────────────── -->
+        <div class="topbar">
+            <span class="brand">IamBusy</span>
+            <a href="/manage" class="icon-btn" id="manage-link" aria-label="Manage schedule" title="Editează orarul">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                </svg>
+            </a>
+        </div>
+
+        <!-- ── Status hero ───────────────────────────────── -->
+        <header class="hero state-{{ context.state }}" aria-label="Schedule status">
+            <div class="hero-top">
+                <span class="week-badge week-{{ context.week_parity }}" id="week-badge">{{ context.week_label }}</span>
+                {% if context.state != 'off' %}
+                <span class="state-pill">
+                    <span class="state-dot"></span>{{ 'Ocupat' if context.state == 'busy' else 'Liber' }}
+                </span>
+                {% endif %}
+            </div>
+            <div class="current-time" id="current-time" aria-live="off">{{ context.now }}</div>
             <div class="status-main" id="status-main">{{ context.status_main }}</div>
             {% if context.status_sub %}
-            <div class="status-sub" id="status-sub">{{ context.status_sub }}</div>
+            <div class="status-sub" id="status-sub" {% if context.current_end_iso %}data-end="{{ context.current_end_iso }}"
+                {% endif %}>{{ context.status_sub }}</div>
             {% endif %}
         </header>
 
+        <!-- ── Week strip ────────────────────────────────── -->
+        <nav class="week-strip" aria-label="Zilele săptămânii">
+            {% for d in context.week_strip %}
+            <a href="{{ d.link }}" class="strip-day {{ 'selected' if d.is_selected }} {{ 'today' if d.is_today }}"
+                aria-label="{{ d.label }}" {% if d.is_selected %}aria-current="date" {% endif %}>
+                <span class="strip-name">{{ d.short }}</span>
+                <span class="strip-num">{{ d.day }}</span>
+                <span class="strip-dots" aria-hidden="true">
+                    {% for _ in range(d.count) %}<i></i>{% endfor %}
+                </span>
+            </a>
+            {% endfor %}
+        </nav>
+
         <!-- ── Navigation ────────────────────────────────── -->
         <nav class="nav-row" aria-label="Date navigation">
-            <a href="{{ context.prev_link }}" class="nav-arrow" id="nav-prev" aria-label="Previous day">&lsaquo;</a>
+            <a href="{{ context.prev_link }}" class="nav-arrow" id="nav-prev" aria-label="Ziua anterioară">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+            </a>
 
-            <div class="date-display" id="date-display">
-                <span class="date-text">{{ context.today_label }} ({{ context.view_date_str }})</span>
+            <button type="button" class="date-display" id="date-display" aria-label="Alege o dată">
+                <span class="date-text">{{ context.today_label }}, {{ context.view_date_str }}</span>
                 <span class="calendar-icon" aria-hidden="true">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="16" y1="2" x2="16" y2="6"></line>
@@ -43,43 +84,86 @@
                         <line x1="3" y1="10" x2="21" y2="10"></line>
                     </svg>
                 </span>
-            </div>
+            </button>
 
-            <a href="{{ context.next_link }}" class="nav-arrow" id="nav-next" aria-label="Next day">&rsaquo;</a>
+            {% if not context.is_today %}
+            <a href="/" class="today-btn" id="today-btn">Azi</a>
+            {% endif %}
 
-            <!-- Native date input: covers the centre area for direct OS picker -->
+            <a href="{{ context.next_link }}" class="nav-arrow" id="nav-next" aria-label="Ziua următoare">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+            </a>
+
             <input type="date" id="date-picker" value="{{ context.view_date_iso }}" class="date-native-input"
-                aria-label="Select a date">
+                tabindex="-1" aria-hidden="true">
         </nav>
 
-        <!-- ── Current Time ──────────────────────────────── -->
-        <div class="current-time" id="current-time" aria-live="polite">{{ context.now }}</div>
-
         <!-- ── Timeline ──────────────────────────────────── -->
-        <section class="schedule-list" id="schedule-list" aria-label="Daily schedule">
-            {% for b in context.blocks %}
-            <div class="schedule-block {{ b.type }} {{ 'current' if b.is_current else '' }}" id="block-{{ loop.index }}"
-                {% if b.is_current %}data-current="true" {% endif %}>
-
-                <div class="time-label">{{ b.start }} – {{ b.end }}</div>
-
-                {% if b.type == 'course' %}
-                <div class="subject">{{ b.subject }}</div>
-                {% if b.room %}
-                <div class="room">{{ b.room }}</div>
-                {% endif %}
-                {% else %}
-                <div class="break-label">Pauză</div>
-                {% endif %}
+        <section class="schedule-list" id="schedule-list" aria-label="Programul zilei">
+            {% if not context.has_courses %}
+            <div class="empty-state">
+                <div class="empty-emoji" aria-hidden="true">🌿</div>
+                <div class="empty-title">Zi liberă</div>
+                <div class="empty-sub">Nicio activitate programată pentru {{ context.today_label | lower }}.</div>
             </div>
+            {% else %}
+            {% for b in context.blocks %}
+            {% if b.type == 'course' %}
+            <article class="schedule-block course kind-{{ b.kind or 'x' }} {{ 'current' if b.is_current }}"
+                id="block-{{ loop.index }}" {% if b.is_current %}data-current="true" {% endif %}
+                data-start="{{ b.start_iso }}" data-end="{{ b.end_iso }}">
+                <div class="block-time">
+                    <span class="t-start">{{ b.start }}</span>
+                    <span class="t-end">{{ b.end }}</span>
+                </div>
+                <div class="block-body">
+                    <div class="block-meta">
+                        {% if b.kind_label %}<span class="kind-chip">{{ b.kind_label }}</span>{% endif %}
+                        {% if b.is_current %}<span class="now-chip">Acum</span>{% endif %}
+                    </div>
+                    <div class="subject">{{ b.subject }}</div>
+                    {% if b.room %}
+                    <div class="room">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                            aria-hidden="true">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
+                        {{ b.room }}
+                    </div>
+                    {% endif %}
+                    {% if b.is_current %}
+                    <div class="progress" aria-hidden="true"><span class="progress-fill"></span></div>
+                    {% endif %}
+                </div>
+            </article>
+            {% else %}
+            <div class="schedule-block break {{ 'current' if b.is_current }} {{ 'edge' if loop.first or loop.last }}"
+                id="block-{{ loop.index }}" {% if b.is_current %}data-current="true" {% endif %}
+                data-start="{{ b.start_iso }}" data-end="{{ b.end_iso }}">
+                <span class="break-line" aria-hidden="true"></span>
+                <span class="break-label">
+                    {% if loop.first %}Liber până la {{ b.end }}
+                    {% elif loop.last %}Liber de la {{ b.start }}
+                    {% else %}Pauză · {{ b.duration }}{% endif %}
+                    {% if b.is_current %}<span class="now-chip">Acum</span>{% endif %}
+                </span>
+                <span class="break-line" aria-hidden="true"></span>
+            </div>
+            {% endif %}
             {% endfor %}
+            {% endif %}
         </section>
 
         <!-- ── Footer ────────────────────────────────────── -->
         <footer class="footer">
-            <a href="/manage" class="manage-link" id="manage-link">⚙️ Manage Schedule</a>
-            <span class="footer-sep">·</span>
             <a href="https://github.com/andreinita21/iambusy" target="_blank" rel="noopener">IamBusy</a> by Andrei Niță
+            <span class="footer-sep">·</span>
+            <span class="kbd-hint">← → pentru navigare</span>
         </footer>
     </div>
 

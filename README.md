@@ -123,6 +123,12 @@ SCHEDULE_ODD = {
 
 On the first run, the app seeds a SQLite database from this config. After that, all changes are made through the `/manage` UI and persisted in `schedule.db`.
 
+New semester? Update `schedule_config.py` (schedule + `ACADEMIC_WEEK1_START`) and replace the DB contents with:
+
+```bash
+python3 db.py --reseed
+```
+
 ## 📦 Tech Stack
 
 -   **Backend**: Flask (Python)

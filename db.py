@@ -217,3 +217,26 @@ def find_conflicts(
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def reseed_from_config(schedule_odd: dict, schedule_even: dict) -> None:
+    """Wipe every activity and re-populate the DB from the config dicts."""
+    conn = _get_conn()
+    conn.execute("DELETE FROM activities")
+    conn.commit()
+    conn.close()
+    seed_from_config(schedule_odd, schedule_even)
+
+
+if __name__ == "__main__":
+    # ``python3 db.py --reseed`` replaces the DB contents with schedule_config.py
+    import sys
+
+    if "--reseed" in sys.argv:
+        from schedule_config import SCHEDULE_EVEN, SCHEDULE_ODD
+
+        init_db()
+        reseed_from_config(SCHEDULE_ODD, SCHEDULE_EVEN)
+        print(f"Reseeded {len(get_all_activities())} activities from schedule_config.py")
+    else:
+        print("Usage: python3 db.py --reseed")

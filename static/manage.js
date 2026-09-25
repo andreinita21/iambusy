@@ -17,7 +17,8 @@
 
     // ── State ───────────────────────────────────────────────────
     let activities = [];
-    let currentWeekFilter = 'odd';
+    const DAY_LABELS = { Marti: 'Marți', Sambata: 'Sâmbătă', Duminica: 'Duminică' };
+    let currentWeekFilter = document.getElementById('week-tabs').dataset.current || 'odd';
     let pendingSave = null;       // stashed form data when conflict arises
     let pendingConflicts = [];    // list of conflicting activities
 
@@ -112,8 +113,9 @@
 
         // Day headers
         DAYS.forEach(day => {
-            const header = el('div', 'grid-day-header', day.substring(0, 3));
-            header.title = day;
+            const label = DAY_LABELS[day] || day;
+            const header = el('div', 'grid-day-header', label.substring(0, 3));
+            header.title = label;
             grid.appendChild(header);
         });
 
@@ -186,6 +188,10 @@
         card.style.top = `${topOffset}%`;
         card.style.height = `calc(${heightSlots * 100}% - 2px)`;
         card.dataset.id = act.id;
+
+        // Course-type colour: "(C)" / "(S)" / "(L)"
+        const kindMatch = subject.match(/\(([CSL])\)\s*$/);
+        if (kindMatch) card.classList.add(`kind-${kindMatch[1]}`);
 
         // Week-type indicator
         if (act.week_type !== 'both') {
@@ -452,6 +458,13 @@
             currentWeekFilter = tab.dataset.week;
             renderGrid();
         });
+    });
+
+    // Open on the tab of the current week
+    weekTabs.forEach(t => {
+        const on = t.dataset.week === currentWeekFilter;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', String(on));
     });
 
     // Add button
