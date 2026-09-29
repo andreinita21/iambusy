@@ -33,7 +33,7 @@ A full-featured management page (`/manage`) lets you take control of your schedu
     -   **Delete the conflicting activity** and proceed with the save.
     -   **Choose another time** and go back to the form.
 -   **Smart Defaults**: Setting a start time automatically sets the end time to +2 hours.
--   **Persistent Storage**: All changes are saved to a local SQLite database, seeded from your `schedule_config.py` on first run.
+-   **Persistent Storage**: All changes are saved to a local SQLite database (`schedule.db`).
 
 ## 🏗️ Architecture
 
@@ -42,8 +42,9 @@ iambusy/
 ├── app.py                    # Flask HTTP layer + REST API
 ├── db.py                     # SQLite database layer (CRUD + conflict detection)
 ├── schedule_engine.py        # Business logic (week parity, timeline, status)
-├── schedule_config.py        # Your schedule data (user-editable, seeds DB on first run)
-├── schedule_config.example.py
+├── setup.sh                  # One-command install / config / systemd service
+├── schedule_config.example.py # Blank config template
+├── schedule_config.py        # Your settings (created by setup.sh, not in git)
 ├── static/
 │   ├── style.css             # Neobrutalist design system (tokens, components)
 │   ├── schedule.js           # Live clock, month calendar, navigation, theme
@@ -56,46 +57,73 @@ iambusy/
 └── README.md
 ```
 
-> **Note:** `schedule.db`, `.venv/`, `__pycache__/`, and `.DS_Store` are excluded from version control via `.gitignore`.
+> **Note:** `schedule_config.py`, `schedule.db`, `.venv/`, `__pycache__/`, and `.DS_Store` are excluded from version control via `.gitignore`.
 
 ## 🚀 Getting Started
 
-### Prerequisites
+You need Python 3.9+ (on Debian/Ubuntu also `sudo apt install python3-venv`).
 
--   Python 3.9 or higher
-
-### Installation
-
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/andreinita21/iambusy.git
-    cd iambusy
-    ```
-
-2.  **Create a virtual environment & install dependencies**
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    ```
-
-3.  **Configure your schedule**
-    Copy the example config and edit it with your courses:
-    ```bash
-    cp schedule_config.example.py schedule_config.py
-    ```
-    Then edit `schedule_config.py` — set your name, academic start date, and fill in your weekly schedule.
-
-### Running the App
+### Quick start
 
 ```bash
-source .venv/bin/activate
-python app.py
+git clone https://github.com/andreinita21/iambusy.git
+cd iambusy
+./setup.sh
 ```
 
-Open your browser at: `http://localhost:2026`
+`setup.sh` asks for your name, the first day of week 1 and a port, then:
 
-To manage your schedule, click **⚙️ Manage Schedule** in the footer or go directly to `http://localhost:2026/manage`.
+1.  creates a virtualenv in `.venv/` and installs the dependencies,
+2.  writes `schedule_config.py` with a **blank schedule**,
+3.  creates the empty SQLite database (`schedule.db`).
+
+Start the app with the command it prints:
+
+```bash
+.venv/bin/gunicorn --bind 0.0.0.0:2026 app:app
+```
+
+Open `http://localhost:2026` and build your schedule from scratch in **`/manage`** — click any empty cell to add an activity.
+
+### Hosting (keep it running)
+
+```bash
+./setup.sh --service
+```
+
+This asks for your sudo password and installs a systemd service (`iambusy.service`) that starts at boot and restarts automatically if the app ever dies. If a unit with that name already exists, the script asks before replacing it and keeps a `.bak` copy.
+
+```bash
+systemctl status iambusy        # is it running?
+journalctl -u iambusy -f        # live logs
+sudo systemctl restart iambusy  # after changing schedule_config.py or updating
+```
+
+The app has **no login**: anyone who can reach the port can edit the schedule. Keep it on your local network / VPN, or put it behind a reverse proxy with authentication.
+
+### Setup options
+
+| Option           | Description                                              |
+|------------------|----------------------------------------------------------|
+| `--name NAME`    | Display name shown in the UI                             |
+| `--start DATE`   | First day of week 1, `YYYY-MM-DD` (default: this week's Monday) |
+| `--port PORT`    | Port to listen on (default: `2026`)                      |
+| `--service`      | Install and start the systemd service (needs sudo)       |
+| `-y`, `--yes`    | No questions, use defaults for anything not given        |
+
+Re-running `./setup.sh` is safe: an existing `schedule_config.py` and `schedule.db` are never overwritten.
+
+### Updating
+
+```bash
+git pull
+./setup.sh                      # installs any new dependencies
+sudo systemctl restart iambusy  # if you use the service
+```
+
+### Development
+
+Set `DEBUG = True` in `schedule_config.py` and run `.venv/bin/python app.py` for auto-reload and the Flask debugger. Never do this on a host other people can reach.
 
 ### API Endpoints
 
@@ -110,31 +138,40 @@ To manage your schedule, click **⚙️ Manage Schedule** in the footer or go di
 
 ## 🛠️ Configuration
 
-Edit `schedule_config.py` to define your schedule:
+Everything lives in `schedule_config.py` (created by `setup.sh`, ignored by git):
+
+| Setting                | Description                                                  |
+|------------------------|--------------------------------------------------------------|
+| `USER_NAME`            | Display name used in the UI                                  |
+| `ACADEMIC_WEEK1_START` | First day of week 1 — odd/even weeks are counted from here   |
+| `APP_HOST`, `APP_PORT` | Where the app listens (`127.0.0.1` = this machine only)      |
+| `DEBUG`                | Flask auto-reload + debugger, for development only           |
+| `SCHEDULE_ODD/EVEN`    | Optional initial schedule, blank by default                  |
+
+Restart the app after editing it. The schedule itself is stored in `schedule.db` and edited through `/manage`.
+
+### Importing a schedule from the config (optional)
+
+Instead of clicking everything in, you can fill `SCHEDULE_ODD` / `SCHEDULE_EVEN`:
 
 ```python
-USER_NAME = "Your Name"
-ACADEMIC_WEEK1_START = date(2025, 10, 29)
-
 SCHEDULE_ODD = {
-    'Luni': [
+    "Luni": [
         ("Course Name (Type) | Room", "08:00", "10:00"),
     ],
     # ... other days
 }
 ```
 
-On the first run, the app seeds a SQLite database from this config. After that, all changes are made through the `/manage` UI and persisted in `schedule.db`.
-
-New semester? Update `schedule_config.py` (schedule + `ACADEMIC_WEEK1_START`) and replace the DB contents with:
+The config seeds the database only while it is empty. To **replace** the database contents with the config (new semester, or wipe everything back to blank):
 
 ```bash
-python3 db.py --reseed
+.venv/bin/python db.py --reseed
 ```
 
 ## 📦 Tech Stack
 
--   **Backend**: Flask (Python)
+-   **Backend**: Flask (Python), served by gunicorn
 -   **Database**: SQLite (via `db.py`)
 -   **Frontend**: HTML5, CSS3 (Custom Design System), JavaScript
 -   **Templating**: Jinja2

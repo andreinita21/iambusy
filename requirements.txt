@@ -1,2 +1,2 @@
 flask>=3.0
-pytest
+gunicorn>=21.2

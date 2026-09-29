@@ -9,13 +9,24 @@ Now backed by a SQLite database for CRUD management.
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 
-from schedule_config import (
-    ACADEMIC_WEEK1_START,
-    APP_PORT,
-    SCHEDULE_EVEN,
-    SCHEDULE_ODD,
-    USER_NAME,
-)
+try:
+    import schedule_config as config
+except ModuleNotFoundError as exc:
+    if exc.name != "schedule_config":
+        raise
+    raise SystemExit(
+        "schedule_config.py is missing — run ./setup.sh "
+        "(or copy schedule_config.example.py to schedule_config.py)."
+    )
+
+USER_NAME = config.USER_NAME
+ACADEMIC_WEEK1_START = config.ACADEMIC_WEEK1_START
+SCHEDULE_ODD = getattr(config, "SCHEDULE_ODD", {})
+SCHEDULE_EVEN = getattr(config, "SCHEDULE_EVEN", {})
+APP_HOST = getattr(config, "APP_HOST", "0.0.0.0")
+APP_PORT = getattr(config, "APP_PORT", 2026)
+DEBUG = getattr(config, "DEBUG", False)
+
 from schedule_engine import (
     DAY_DISPLAY,
     DAY_SHORT,
@@ -332,4 +343,4 @@ def api_check_conflicts():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=APP_PORT)
+    app.run(debug=DEBUG, host=APP_HOST, port=APP_PORT)
