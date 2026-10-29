@@ -1,0 +1,14 @@
+{% extends "auth_base.html" %}
+{% block title %}Link indisponibil{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    <header class="auth-head">
+        <span class="tag tag-ink">Program partajat</span>
+        <h1 class="auth-title" id="auth-title">
+            {% if state == 'expired' %}Linkul a expirat{% elif state == 'revoked' %}Linkul a fost dezactivat{% else %}Link inexistent{% endif %}
+        </h1>
+        <p class="auth-lead">Cere-i persoanei care ți l-a trimis un link nou.</p>
+    </header>
+</section>
+{% endblock %}

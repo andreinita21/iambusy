@@ -22,7 +22,7 @@
 </head>
 
 <body>
-    <div class="manage" role="main">
+    <div class="manage" role="main" id="manage" data-today="{{ today }}" data-week1="{{ week1_start }}">
 
         <!-- ── Header ──────────────────────────────────── -->
         <header class="manage-head">
@@ -46,6 +46,7 @@
                     <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
                 </svg>
             </button>
+            {% include "_friends_button.html" %}
             <button type="button" class="btn btn-primary" id="btn-add" aria-label="Adaugă activitate">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     stroke-width="3" stroke-linecap="round" aria-hidden="true">
@@ -54,6 +55,8 @@
                 <span>Adaugă</span>
             </button>
         </header>
+
+        <a class="invite-banner" id="invite-banner" href="/friends#inbox" hidden></a>
 
         <!-- ── Toolbar: week tabs + legend ─────────────── -->
         <div class="manage-toolbar">
@@ -64,13 +67,25 @@
                 <button type="button" class="seg-btn" data-week="even" role="tab" aria-selected="false">
                     Săpt. pară {% if current_week == 'even' %}<span class="now-mark">acum</span>{% endif %}
                 </button>
+                <button type="button" class="seg-btn" data-week="cal" role="tab" aria-selected="false"
+                    title="Săptămâni reale, cu evenimentele de o singură dată">
+                    Calendar
+                </button>
             </div>
-            <div class="legend" aria-hidden="true">
-                <span><i style="background:var(--c-curs)"></i>Curs</span>
-                <span><i style="background:var(--c-seminar)"></i>Seminar</span>
-                <span><i style="background:var(--c-lab)"></i>Laborator</span>
-                <span><i class="only"></i>doar în această săptămână</span>
+            <div class="cal-nav" id="cal-nav" hidden>
+                <button type="button" class="btn btn-icon btn-sm" id="cal-week-prev" aria-label="Săptămâna anterioară">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <b class="mono" id="cal-week-label">…</b>
+                <button type="button" class="btn btn-icon btn-sm" id="cal-week-next" aria-label="Săptămâna următoare">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+                <button type="button" class="btn btn-sm" id="cal-week-today">Azi</button>
+                <button type="button" class="btn btn-sm" id="btn-overlay" aria-haspopup="dialog">Prieteni ocupați…</button>
             </div>
+            <div class="legend" id="legend" aria-hidden="true"></div>
         </div>
 
         <!-- ── Weekly grid ─────────────────────────────── -->
@@ -81,7 +96,7 @@
 
     <!-- ══════════════ Add / Edit modal ══════════════ -->
     <div class="overlay" id="modal-overlay" aria-hidden="true">
-        <div class="modal" role="dialog" aria-labelledby="modal-title">
+        <div class="modal modal-wide" role="dialog" aria-labelledby="modal-title">
             <div class="modal-head">
                 <h2 class="modal-title" id="modal-title">Adaugă activitate</h2>
                 <button type="button" class="modal-close" id="modal-close" aria-label="Închide">&times;</button>
@@ -91,29 +106,62 @@
 
                 <div class="field">
                     <label for="form-title">Activitate</label>
-                    <input class="input" type="text" id="form-title" placeholder="ex. OOP (L) | CJ101" required>
-                    <span class="hint">Format: <b>Materie (C/S/L) | Sală</b> — tipul colorează cardul.</span>
+                    <input class="input" type="text" id="form-title" placeholder="ex. OOP (L) | CJ101" maxlength="120" required>
+                    <span class="hint">Format opțional: <b>Materie (C/S/L) | Sală</b>.</span>
                 </div>
 
                 <div class="row-2">
                     <div class="field">
-                        <label for="form-day">Ziua</label>
+                        <label for="form-category">Categorie</label>
                         <div class="select-wrap">
-                            <select class="select" id="form-day" required>
-                                {% for d in days %}
-                                <option value="{{ d }}">{{ day_display[d] }}</option>
-                                {% endfor %}
-                            </select>
+                            <select class="select" id="form-category"></select>
                         </div>
                     </div>
                     <div class="field">
-                        <label id="week-type-label">Săptămâna</label>
-                        <div class="choice" role="radiogroup" aria-labelledby="week-type-label" id="form-week-type">
-                            <label><input type="radio" name="week_type" value="both" checked><span>Ambele</span>Ambele</label>
-                            <label><input type="radio" name="week_type" value="odd"><span>Impară</span>Impară</label>
-                            <label><input type="radio" name="week_type" value="even"><span>Pară</span>Pară</label>
+                        <label id="repeat-label">Repetare</label>
+                        <div class="choice choice-2" role="radiogroup" aria-labelledby="repeat-label" id="form-repeat">
+                            <label><input type="radio" name="repeat" value="weekly" checked><span>Săptămânal</span>Săptămânal</label>
+                            <label><input type="radio" name="repeat" value="once"><span>O dată</span>O dată</label>
                         </div>
                     </div>
+                </div>
+
+                <div class="repeat-weekly" id="repeat-weekly">
+                    <div class="row-2">
+                        <div class="field">
+                            <label for="form-day">Ziua</label>
+                            <div class="select-wrap">
+                                <select class="select" id="form-day">
+                                    {% for d in days %}
+                                    <option value="{{ d }}">{{ day_display[d] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label id="week-type-label">Săptămâna</label>
+                            <div class="choice" role="radiogroup" aria-labelledby="week-type-label" id="form-week-type">
+                                <label><input type="radio" name="week_type" value="both" checked><span>Ambele</span>Ambele</label>
+                                <label><input type="radio" name="week_type" value="odd"><span>Impară</span>Impară</label>
+                                <label><input type="radio" name="week_type" value="even"><span>Pară</span>Pară</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row-2">
+                        <div class="field">
+                            <label for="form-from">Începând cu <small>(opțional)</small></label>
+                            <input class="input" type="date" id="form-from">
+                        </div>
+                        <div class="field">
+                            <label for="form-until">Până la <small>(opțional)</small></label>
+                            <input class="input" type="date" id="form-until">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field repeat-once" id="repeat-once" hidden>
+                    <label for="form-date">Data</label>
+                    <input class="input" type="date" id="form-date">
                 </div>
 
                 <div class="row-2">
@@ -127,11 +175,81 @@
                     </div>
                 </div>
 
+                <details class="modal-section" id="vis-section">
+                    <summary>Cine vede <span class="summary-meta" id="vis-summary"></span></summary>
+                    <div class="field">
+                        <label for="vis-all">Toți prietenii</label>
+                        <div class="select-wrap">
+                            <select class="select" id="vis-all"></select>
+                        </div>
+                        <span class="hint">Bate regula categoriei. Excepțiile de mai jos bat și setarea asta.</span>
+                    </div>
+                    <div class="vis-exceptions" id="vis-exceptions"></div>
+                    <button type="button" class="btn btn-sm" id="vis-add">+ Excepție pentru un prieten sau grup</button>
+                </details>
+
+                <details class="modal-section" id="inv-section">
+                    <summary>Invită prieteni <span class="summary-meta" id="inv-summary"></span></summary>
+                    <div class="inv-list" id="inv-list"></div>
+                    <span class="hint">Cine acceptă vede activitatea complet și o are în calendar, așa că prietenii lui
+                        știu că e ocupat. Doar tu o poți modifica; schimbările ajung la toți.</span>
+                </details>
+
                 <div class="modal-actions">
                     <button type="button" class="btn btn-ghost" id="btn-cancel">Renunță</button>
                     <button type="submit" class="btn btn-primary" id="btn-save">Salvează</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- ══════════════ Shared activity modal ══════════════ -->
+    <div class="overlay" id="shared-overlay" aria-hidden="true">
+        <div class="modal modal-wide" role="dialog" aria-labelledby="shared-title">
+            <div class="modal-head shared-head">
+                <h2 class="modal-title" id="shared-title">Activitate comună</h2>
+                <button type="button" class="modal-close" id="shared-close" aria-label="Închide">&times;</button>
+            </div>
+            <form class="modal-body" id="shared-form" autocomplete="off">
+                <div class="shared-info">
+                    <b class="shared-name" id="shared-name"></b>
+                    <span class="mono" id="shared-when"></span>
+                    <span id="shared-owner"></span>
+                    <ul class="people" id="shared-people"></ul>
+                </div>
+                <div class="field">
+                    <label for="shared-category">Categoria în calendarul tău</label>
+                    <div class="select-wrap"><select class="select" id="shared-category"></select></div>
+                    <span class="hint">Decide ce văd prietenii tăi (după regulile categoriei).</span>
+                </div>
+                <div class="field">
+                    <label for="shared-vis">Pentru toți prietenii tăi</label>
+                    <div class="select-wrap"><select class="select" id="shared-vis"></select></div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-danger" id="shared-leave">Renunț</button>
+                    <button type="button" class="btn btn-ghost" id="shared-decline" hidden>Nu pot</button>
+                    <button type="submit" class="btn btn-primary" id="shared-save">Salvează</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ══════════════ Overlay picker ══════════════ -->
+    <div class="overlay" id="busy-overlay" aria-hidden="true">
+        <div class="modal" role="dialog" aria-labelledby="busy-title">
+            <div class="modal-head">
+                <h2 class="modal-title" id="busy-title">Arată când sunt ocupați</h2>
+                <button type="button" class="modal-close" id="busy-close" aria-label="Închide">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-text">Blocurile lor apar hașurate în spatele activităților tale, în tabul Calendar.</p>
+                <div class="inv-list" id="busy-list"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" id="busy-clear">Niciunul</button>
+                    <button type="button" class="btn btn-primary" id="busy-apply">Arată</button>
+                </div>
+            </div>
         </div>
     </div>
 

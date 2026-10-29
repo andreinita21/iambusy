@@ -7,6 +7,10 @@
  *  • Navigation: ← / → keys, swipe, "T" for today, "C" for calendar
  *  • Month calendar popover with per-day busy bars and a day preview
  *  • Theme toggle (dark by default, light opt-in)
+ *
+ * The same page shows your own day, a friend's day, a preview of how a
+ * friend sees you, or a public share link — the calendar reads its data
+ * URL and the share window from data attributes on #cal.
  */
 
 (function () {
@@ -108,6 +112,10 @@
 
     const todayIso = cal ? cal.dataset.today : null;
     let selectedIso = cal ? cal.dataset.selected : null;
+    const apiDays = (cal && cal.dataset.api) || '/api/days';
+    const mode = (cal && cal.dataset.mode) || 'own';
+    const windowFirst = (cal && cal.dataset.first) || '';
+    const windowLast = (cal && cal.dataset.last) || '';
     let viewYear, viewMonth;          // month currently displayed (0-based month)
     const dayCache = new Map();       // iso → day summary from /api/days
     let calOpen = false;
@@ -129,9 +137,14 @@
             if (!dayCache.has(iso(d))) missing.push(iso(d));
         }
         if (!missing.length) return;
-        const res = await fetch(`/api/days?from=${missing[0]}&to=${missing[missing.length - 1]}`);
+        const res = await fetch(`${apiDays}?from=${missing[0]}&to=${missing[missing.length - 1]}`,
+            { credentials: 'same-origin' });
         if (res.status === 401) {
             window.location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+            return;
+        }
+        if (res.status === 403 || (res.status === 404 && mode === 'share')) {
+            window.location.reload(); // PIN needed again / link gone
             return;
         }
         if (!res.ok) return;
@@ -202,6 +215,8 @@
                 if (key === todayIso) btn.classList.add('today');
                 if (key === selectedIso) { btn.classList.add('selected'); btn.setAttribute('aria-selected', 'true'); }
                 if (!acts.length) btn.classList.add('free');
+                const outside = (info && info.out) || (windowFirst && key < windowFirst) || (windowLast && key > windowLast);
+                if (outside) { btn.classList.add('out'); btn.disabled = true; }
                 if (acts.length && d.getMonth() === viewMonth) busyDays++;
                 btn.setAttribute('aria-label',
                     `${DAY_LABELS[col]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${acts.length ? acts.length + ' activități' : 'liber'}`);
@@ -217,6 +232,7 @@
                 btn.appendChild(cnt);
 
                 btn.addEventListener('click', () => {
+                    if (outside) return;
                     if (selectedIso === key) { window.location.href = `?date=${key}`; return; }
                     selectDay(key);
                 });
@@ -248,6 +264,14 @@
         pvTitle.textContent = `${DAY_LABELS[dow]}, ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}${rel}`;
         pvList.innerHTML = '';
 
+        if (info && info.out) {
+            pvWeek.hidden = true;
+            pvEmpty.hidden = false;
+            pvEmpty.textContent = 'Ziua nu face parte din perioada partajată.';
+            pvOpen.hidden = pvAdd.hidden = true;
+            return;
+        }
+
         if (!info) {
             pvWeek.hidden = true;
             pvEmpty.hidden = false;
@@ -264,13 +288,15 @@
         const acts = info.activities;
         if (!acts.length) {
             pvEmpty.hidden = false;
-            pvEmpty.textContent = 'Zi complet liberă — poți programa orice.';
+            pvEmpty.textContent = mode === 'own'
+                ? 'Zi complet liberă — poți programa orice.'
+                : 'Nimic programat (sau vizibil) în această zi.';
         } else {
             pvEmpty.hidden = true;
             // Interleave courses and the free windows between them.
             const windows = info.free_windows || [];
             acts.forEach((a, i) => {
-                const meta = [a.kind_label, a.room].filter(Boolean).join(' · ');
+                const meta = a.masked ? 'fără detalii' : [a.kind_label, a.room].filter(Boolean).join(' · ');
                 pvList.appendChild(previewRow(a.start, a.end, a.kind || 'x', a.subject, meta));
                 const w = windows.find(w => w.start === a.end);
                 if (w && i < acts.length - 1) {
@@ -296,8 +322,8 @@
                 sEnd = `${pad(Math.min(22, h + 2))}:${pad(m)}`;
             }
         }
-        pvAdd.hidden = false;
-        pvAdd.href = `/manage?day=${DAY_KEYS[dow]}&week=${info.parity}&start=${sStart}&end=${sEnd}`;
+        pvAdd.hidden = mode !== 'own';
+        pvAdd.href = `/manage?day=${DAY_KEYS[dow]}&week=${info.parity}&date=${key}&start=${sStart}&end=${sEnd}`;
     }
 
     function previewRow(start, end, kind, subject, meta) {
@@ -421,7 +447,7 @@
         if (calOpen) return; // the grid handles its own keys
         if (e.key === 'ArrowLeft' && prevLink) prevLink.click();
         else if (e.key === 'ArrowRight' && nextLink) nextLink.click();
-        else if (e.key === 't' || e.key === 'T') window.location.href = '/';
+        else if (e.key === 't' || e.key === 'T') window.location.href = location.pathname;
         else if (e.key === 'c' || e.key === 'C') openCalendar();
     });
 

@@ -4,7 +4,7 @@
 {% block content %}
 <section class="auth-card" aria-labelledby="auth-title">
     <header class="auth-head auth-head-lime">
-        <span class="tag tag-ink">Doar cu invitație</span>
+        <span class="tag tag-ink">{{ 'Invitație de prietenie' if form.friend else 'Doar cu invitație' }}</span>
         <h1 class="auth-title" id="auth-title">Creează-ți contul</h1>
         <p class="auth-lead">Un orar doar al tău, de construit de la zero.</p>
     </header>
@@ -17,7 +17,14 @@
     <form class="auth-form" method="post" action="/register" novalidate>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        {% if form.from_link and form.invite %}
+        {% if form.friend %}
+        <input type="hidden" name="friend" value="{{ form.friend }}">
+        <div class="invite-ok">
+            <span class="flash-mark" aria-hidden="true">✓</span>
+            <span>Invitat de {{ form.friend_owner.display_name }} <small class="mono">@{{ form.friend_owner.username }}</small></span>
+        </div>
+        <p class="hint">După ce îți creezi contul, veți fi automat prieteni.</p>
+        {% elif form.from_link and form.invite %}
         <input type="hidden" name="invite" value="{{ form.invite }}">
         <input type="hidden" name="from_link" value="1">
         <div class="invite-ok">

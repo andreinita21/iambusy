@@ -1,0 +1,12 @@
+{% set n = social_badge() %}
+<a href="/friends" class="btn btn-icon badge-host" id="friends-link"
+    aria-label="Prieteni{% if n %} · {{ n }} noutăți{% endif %}" title="Prieteni{% if n %} · {{ n }} noutăți{% endif %}">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="9" cy="8" r="3.5"></circle>
+        <path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"></path>
+        <circle cx="17" cy="9" r="2.5"></circle>
+        <path d="M16 14.2c3 .2 5.5 2.4 5.5 5.8"></path>
+    </svg>
+    {% if n %}<span class="badge" aria-hidden="true">{{ n if n < 100 else '99+' }}</span>{% endif %}
+</a>

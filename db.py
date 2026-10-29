@@ -4,15 +4,35 @@ Database layer for IamBusy — SQLite-backed storage.
 Holds the accounts (users, device sessions, invite codes, rate-limit log)
 and one schedule per account.  Every activity query is scoped by
 ``user_id`` — there is no function that reads or writes another user's
-activities.
+activities.  The social side (friends, groups, visibility rules, shared
+activities, notifications, share links) lives in :mod:`db_social`.
+
+Schema changes are additive only (new tables, new nullable columns), so an
+older copy of the app keeps working against an upgraded database.
 """
 
 import os
+import re
 import sqlite3
 import time
 from typing import Optional
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule.db")
+DB_PATH = os.environ.get("IAMBUSY_DB") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "schedule.db")
+
+# Palette keys map to CSS tokens (``var(--blue)`` …).  Red is reserved for
+# "busy" blocks so a category can never be mistaken for one.
+CATEGORY_COLORS = ("blue", "orange", "purple", "cyan", "pink", "yellow", "lime")
+DEFAULT_CATEGORIES = (
+    ("Curs", "blue"), ("Seminar", "orange"), ("Laborator", "purple"),
+    ("Personal", "pink"), ("Altele", "cyan"),
+)
+FALLBACK_CATEGORY = "Altele"
+_KIND_CATEGORY = {"C": "Curs", "S": "Seminar", "L": "Laborator"}
+_KIND_RE = re.compile(r"\(([CSL])\)")
+
+ACTIVITY_COLS = ("id, user_id, title, day, start_time, end_time, week_type, "
+                 "category_id, date, valid_from, valid_until")
 
 
 def _now() -> int:
@@ -29,7 +49,7 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Create the tables if they don't exist and lock down the file mode."""
+    """Create the tables if they don't exist, migrate, lock down the file mode."""
     conn = _get_conn()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS invite_codes (
@@ -87,13 +107,229 @@ def init_db() -> None:
                         CHECK (week_type IN ('odd', 'even', 'both'))
         );
         CREATE INDEX IF NOT EXISTS idx_activities_user ON activities(user_id, day);
+
+        -- ── Categories (one per activity, defined per user) ────────────
+        CREATE TABLE IF NOT EXISTS categories (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name        TEXT    NOT NULL,
+            color       TEXT    NOT NULL DEFAULT 'cyan',
+            position    INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL,
+            UNIQUE (user_id, name)
+        );
+
+        -- ── Friends ────────────────────────────────────────────────────
+        -- One row per pair (user_lo < user_hi); 'pending' until accepted.
+        CREATE TABLE IF NOT EXISTS friendships (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            requester_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            addressee_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            user_lo       INTEGER NOT NULL,
+            user_hi       INTEGER NOT NULL,
+            status        TEXT    NOT NULL CHECK (status IN ('pending', 'accepted')),
+            created_at    INTEGER NOT NULL,
+            accepted_at   INTEGER,
+            UNIQUE (user_lo, user_hi)
+        );
+        CREATE INDEX IF NOT EXISTS idx_friend_req ON friendships(requester_id);
+        CREATE INDEX IF NOT EXISTS idx_friend_addr ON friendships(addressee_id);
+
+        CREATE TABLE IF NOT EXISTS blocks (
+            blocker_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            blocked_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at  INTEGER NOT NULL,
+            PRIMARY KEY (blocker_id, blocked_id)
+        );
+
+        -- Groups are private to their owner.
+        CREATE TABLE IF NOT EXISTS friend_groups (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name        TEXT    NOT NULL,
+            color       TEXT    NOT NULL DEFAULT 'cyan',
+            created_at  INTEGER NOT NULL,
+            UNIQUE (owner_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS friend_group_members (
+            group_id   INTEGER NOT NULL REFERENCES friend_groups(id) ON DELETE CASCADE,
+            member_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            PRIMARY KEY (group_id, member_id)
+        );
+
+        -- ── Visibility rules ───────────────────────────────────────────
+        -- subject_type 'all' (subject_id 0), 'group' or 'friend'.
+        CREATE TABLE IF NOT EXISTS category_rules (
+            category_id   INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+            subject_type  TEXT    NOT NULL CHECK (subject_type IN ('all', 'group', 'friend')),
+            subject_id    INTEGER NOT NULL DEFAULT 0,
+            level         TEXT    NOT NULL CHECK (level IN ('full', 'busy', 'hidden')),
+            PRIMARY KEY (category_id, subject_type, subject_id)
+        );
+
+        -- user_id = whose calendar the rule applies to (the owner, or a
+        -- participant who accepted the activity into their own calendar).
+        CREATE TABLE IF NOT EXISTS activity_rules (
+            activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+            user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            subject_type  TEXT    NOT NULL CHECK (subject_type IN ('all', 'group', 'friend')),
+            subject_id    INTEGER NOT NULL DEFAULT 0,
+            level         TEXT    NOT NULL CHECK (level IN ('full', 'busy', 'hidden')),
+            PRIMARY KEY (activity_id, user_id, subject_type, subject_id)
+        );
+
+        -- ── Shared activities ──────────────────────────────────────────
+        CREATE TABLE IF NOT EXISTS activity_participants (
+            activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+            user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            status        TEXT    NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending', 'accepted', 'declined')),
+            category_id   INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+            invited_at    INTEGER NOT NULL,
+            responded_at  INTEGER,
+            PRIMARY KEY (activity_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_participants_user ON activity_participants(user_id);
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            kind         TEXT    NOT NULL,
+            actor_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            activity_id  INTEGER REFERENCES activities(id) ON DELETE SET NULL,
+            text         TEXT    NOT NULL DEFAULT '',
+            created_at   INTEGER NOT NULL,
+            read_at      INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at);
+
+        -- ── Links ──────────────────────────────────────────────────────
+        CREATE TABLE IF NOT EXISTS friend_links (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            code        TEXT    NOT NULL UNIQUE,
+            note        TEXT    NOT NULL DEFAULT '',
+            max_uses    INTEGER NOT NULL DEFAULT 1 CHECK (max_uses >= 1),
+            uses        INTEGER NOT NULL DEFAULT 0,
+            expires_at  INTEGER,
+            revoked     INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS share_links (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token           TEXT    NOT NULL UNIQUE,
+            label           TEXT    NOT NULL DEFAULT '',
+            preset          TEXT    NOT NULL DEFAULT 'busy'
+                            CHECK (preset IN ('busy', 'full', 'friends')),
+            window_type     TEXT    NOT NULL DEFAULT 'unlimited'
+                            CHECK (window_type IN ('unlimited', 'range', 'rolling', 'days')),
+            range_from      TEXT,
+            range_to        TEXT,
+            rolling_days    INTEGER,
+            days_list       TEXT    NOT NULL DEFAULT '',
+            expires_at      INTEGER,
+            pin_hash        TEXT,
+            show_status     INTEGER NOT NULL DEFAULT 1,
+            views           INTEGER NOT NULL DEFAULT 0,
+            last_viewed_at  INTEGER,
+            revoked         INTEGER NOT NULL DEFAULT 0,
+            created_at      INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS share_link_rules (
+            link_id      INTEGER NOT NULL REFERENCES share_links(id) ON DELETE CASCADE,
+            category_id  INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+            level        TEXT    NOT NULL CHECK (level IN ('full', 'busy', 'hidden')),
+            PRIMARY KEY (link_id, category_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key    TEXT PRIMARY KEY,
+            value  TEXT NOT NULL
+        );
     """)
     conn.commit()
-    conn.close()
+    try:
+        conn.execute("BEGIN IMMEDIATE")  # serialise the workers' migrations
+        _migrate(conn)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     try:
         os.chmod(DB_PATH, 0o600)  # password hashes live here
     except OSError:
         pass
+
+
+def _columns(conn, table: str) -> set:
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _migrate(conn) -> None:
+    """Additive, idempotent upgrades of databases created by older versions."""
+    cols = _columns(conn, "activities")
+    for name, decl in (
+        ("category_id", "INTEGER REFERENCES categories(id) ON DELETE SET NULL"),
+        ("date", "TEXT"),          # set → one-off event on that ISO date
+        ("valid_from", "TEXT"),    # optional range of a weekly activity
+        ("valid_until", "TEXT"),
+    ):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE activities ADD COLUMN {name} {decl}")
+    if "invited_by" not in _columns(conn, "users"):
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(user_id, date)")
+
+    for row in conn.execute(
+        "SELECT id FROM users WHERE id NOT IN (SELECT DISTINCT user_id FROM categories)"
+    ).fetchall():
+        seed_categories(conn, row["id"])
+    _assign_missing_categories(conn)
+
+
+def seed_categories(conn, user_id: int) -> None:
+    now = _now()
+    conn.executemany(
+        "INSERT OR IGNORE INTO categories (user_id, name, color, position, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [(user_id, name, color, i, now) for i, (name, color) in enumerate(DEFAULT_CATEGORIES)],
+    )
+
+
+def guess_category_name(title: str) -> str:
+    """``"OOP (L) | C1"`` → ``"Laborator"``; anything else → the fallback."""
+    m = _KIND_RE.search(title or "")
+    return _KIND_CATEGORY[m.group(1)] if m else FALLBACK_CATEGORY
+
+
+def _assign_missing_categories(conn) -> None:
+    """Give every activity without a (valid, own) category one, by its title."""
+    rows = conn.execute(
+        "SELECT a.id, a.user_id, a.title FROM activities a "
+        "LEFT JOIN categories c ON c.id = a.category_id AND c.user_id = a.user_id "
+        "WHERE c.id IS NULL"
+    ).fetchall()
+    cache: dict = {}
+    for r in rows:
+        if r["user_id"] not in cache:
+            cache[r["user_id"]] = {
+                c["name"]: c["id"] for c in conn.execute(
+                    "SELECT id, name FROM categories WHERE user_id = ? ORDER BY position, id",
+                    (r["user_id"],))
+            }
+        cats = cache[r["user_id"]]
+        if not cats:
+            continue
+        target = cats.get(guess_category_name(r["title"])) or cats.get(FALLBACK_CATEGORY) \
+            or next(iter(cats.values()))
+        conn.execute("UPDATE activities SET category_id = ? WHERE id = ?", (target, r["id"]))
 
 
 # ═══════════════════════════════════════════════════════ Users ══
@@ -105,24 +341,29 @@ def create_user(
     week1_start: str,
     is_admin: bool = False,
     invite_code: Optional[str] = None,
+    friend_code: Optional[str] = None,
 ) -> Optional[int]:
     """Insert a user and return its id.
 
-    With *invite_code*, the code is consumed in the same transaction; the
-    function returns ``None`` (and creates nothing) if the code is unknown,
-    revoked, expired or used up.  Raises ``sqlite3.IntegrityError`` if the
+    With *invite_code* (an admin invite) or *friend_code* (a user's friend
+    link), the code is consumed in the same transaction; the function
+    returns ``None`` (and creates nothing) if the code is unknown, revoked,
+    expired or used up.  A friend code also makes the new account friends
+    with the link's owner.  Raises ``sqlite3.IntegrityError`` if the
     username is taken.
     """
     conn = _get_conn()
     try:
         conn.execute("BEGIN IMMEDIATE")
+        now = _now()
         invite_id = None
+        invited_by = None
         if invite_code is not None:
             cur = conn.execute(
                 "UPDATE invite_codes SET uses = uses + 1 "
                 "WHERE code = ? AND revoked = 0 AND uses < max_uses "
                 "AND (expires_at IS NULL OR expires_at > ?)",
-                (invite_code, _now()),
+                (invite_code, now),
             )
             if cur.rowcount != 1:
                 conn.rollback()
@@ -130,14 +371,42 @@ def create_user(
             invite_id = conn.execute(
                 "SELECT id FROM invite_codes WHERE code = ?", (invite_code,)
             ).fetchone()["id"]
+        elif friend_code is not None:
+            cur = conn.execute(
+                "UPDATE friend_links SET uses = uses + 1 "
+                "WHERE code = ? AND revoked = 0 AND uses < max_uses "
+                "AND (expires_at IS NULL OR expires_at > ?) "
+                "AND user_id IN (SELECT id FROM users WHERE is_active = 1)",
+                (friend_code, now),
+            )
+            if cur.rowcount != 1:
+                conn.rollback()
+                return None
+            invited_by = conn.execute(
+                "SELECT user_id FROM friend_links WHERE code = ?", (friend_code,)
+            ).fetchone()["user_id"]
         cur = conn.execute(
             "INSERT INTO users (username, display_name, password_hash, is_admin, "
-            "week1_start, created_at, invite_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "week1_start, created_at, invite_id, invited_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (username, display_name, password_hash, int(is_admin), week1_start,
-             _now(), invite_id),
+             now, invite_id, invited_by),
         )
+        user_id = cur.lastrowid
+        seed_categories(conn, user_id)
+        if invited_by is not None:
+            lo, hi = sorted((invited_by, user_id))
+            conn.execute(
+                "INSERT INTO friendships (requester_id, addressee_id, user_lo, user_hi, status, "
+                "created_at, accepted_at) VALUES (?, ?, ?, ?, 'accepted', ?, ?)",
+                (invited_by, user_id, lo, hi, now, now),
+            )
+            conn.execute(
+                "INSERT INTO notifications (user_id, kind, actor_id, created_at) "
+                "VALUES (?, 'friend_joined', ?, ?)",
+                (invited_by, user_id, now),
+            )
         conn.commit()
-        return cur.lastrowid
+        return user_id
     except Exception:
         conn.rollback()
         raise
@@ -168,7 +437,8 @@ def list_users() -> list[dict]:
         "       (SELECT COUNT(*) FROM sessions s "
         "         WHERE s.user_id = u.id AND s.expires_at > ?) AS session_count, "
         "       (SELECT COUNT(*) FROM activities a WHERE a.user_id = u.id) AS activity_count, "
-        "       (SELECT note FROM invite_codes i WHERE i.id = u.invite_id) AS invite_note "
+        "       (SELECT note FROM invite_codes i WHERE i.id = u.invite_id) AS invite_note, "
+        "       (SELECT username FROM users p WHERE p.id = u.invited_by) AS invited_by_username "
         "FROM users u ORDER BY u.is_admin DESC, u.created_at",
         (_now(),),
     ).fetchall()
@@ -192,8 +462,13 @@ def update_user(user_id: int, **fields) -> None:
 
 
 def delete_user(user_id: int) -> bool:
-    """Delete a user; sessions and activities go with it (ON DELETE CASCADE)."""
+    """Delete a user; everything they own goes with it (ON DELETE CASCADE)."""
     conn = _get_conn()
+    # Rules naming this user as a friend have no foreign key to cascade on.
+    conn.execute("DELETE FROM category_rules WHERE subject_type = 'friend' AND subject_id = ?",
+                 (user_id,))
+    conn.execute("DELETE FROM activity_rules WHERE subject_type = 'friend' AND subject_id = ?",
+                 (user_id,))
     cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
@@ -292,24 +567,24 @@ def create_invite(code: str, note: str, max_uses: int, expires_at: Optional[int]
     return cur.lastrowid
 
 
+def _with_status(inv: dict, now: int) -> dict:
+    if inv["revoked"]:
+        inv["status"] = "revoked"
+    elif inv["uses"] >= inv["max_uses"]:
+        inv["status"] = "used"
+    elif inv["expires_at"] is not None and inv["expires_at"] <= now:
+        inv["status"] = "expired"
+    else:
+        inv["status"] = "active"
+    return inv
+
+
 def list_invites() -> list[dict]:
     conn = _get_conn()
     rows = conn.execute("SELECT * FROM invite_codes ORDER BY created_at DESC").fetchall()
     conn.close()
     now = _now()
-    invites = []
-    for r in rows:
-        inv = dict(r)
-        if inv["revoked"]:
-            inv["status"] = "revoked"
-        elif inv["uses"] >= inv["max_uses"]:
-            inv["status"] = "used"
-        elif inv["expires_at"] is not None and inv["expires_at"] <= now:
-            inv["status"] = "expired"
-        else:
-            inv["status"] = "active"
-        invites.append(inv)
-    return invites
+    return [_with_status(dict(r), now) for r in rows]
 
 
 def invite_is_usable(code: str) -> bool:
@@ -370,38 +645,126 @@ def clear_attempts(*keys: str) -> None:
     conn.close()
 
 
-# ══════════════════════════════════════════════════ Activities ══
+# ═══════════════════════════════════════════════════ Settings ══
 
-def get_schedule(user_id: int, week_type: str) -> dict[str, list[tuple[str, str, str]]]:
-    """Return the user's schedule as ``{day: [(title, start, end), …]}``.
-
-    *week_type* should be ``'odd'`` or ``'even'``. Activities stored as
-    ``'both'`` are included in either result.
-    """
-    from schedule_engine import DAYS
-
+def get_setting(key: str, default: str = "") -> str:
     conn = _get_conn()
-    rows = conn.execute(
-        "SELECT title, day, start_time, end_time FROM activities "
-        "WHERE user_id = ? AND (week_type = ? OR week_type = 'both') "
-        "ORDER BY start_time",
-        (user_id, week_type),
-    ).fetchall()
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    conn = _get_conn()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
     conn.close()
 
-    schedule: dict[str, list[tuple[str, str, str]]] = {d: [] for d in DAYS}
-    for r in rows:
-        if r["day"] in schedule:
-            schedule[r["day"]].append((r["title"], r["start_time"], r["end_time"]))
-    return schedule
 
+# ══════════════════════════════════════════════════ Categories ══
 
-def get_all_activities(user_id: int) -> list[dict]:
-    """Return every activity of the user as a plain dict (for the JSON API)."""
+def list_categories(user_id: int) -> list[dict]:
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT id, title, day, start_time, end_time, week_type "
-        "FROM activities WHERE user_id = ? ORDER BY day, start_time",
+        "SELECT c.id, c.name, c.color, c.position, "
+        "       (SELECT COUNT(*) FROM activities a WHERE a.category_id = c.id) AS activity_count "
+        "FROM categories c WHERE c.user_id = ? ORDER BY c.position, c.id",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_category(user_id: int, category_id: int) -> Optional[dict]:
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT id, name, color, position FROM categories WHERE id = ? AND user_id = ?",
+        (category_id, user_id),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_category(user_id: int, name: str, color: str) -> int:
+    """Raises ``sqlite3.IntegrityError`` if the name is taken."""
+    conn = _get_conn()
+    pos = conn.execute(
+        "SELECT COALESCE(MAX(position), -1) + 1 FROM categories WHERE user_id = ?", (user_id,)
+    ).fetchone()[0]
+    cur = conn.execute(
+        "INSERT INTO categories (user_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)",
+        (user_id, name, color, pos, _now()),
+    )
+    conn.commit()
+    conn.close()
+    return cur.lastrowid
+
+
+def update_category(user_id: int, category_id: int, name: str, color: str) -> bool:
+    """Raises ``sqlite3.IntegrityError`` if the new name is taken."""
+    conn = _get_conn()
+    cur = conn.execute(
+        "UPDATE categories SET name = ?, color = ? WHERE id = ? AND user_id = ?",
+        (name, color, category_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
+
+
+def delete_category(user_id: int, category_id: int, move_to: int) -> bool:
+    """Delete a category, moving its activities (and accepted invites) to *move_to*."""
+    if category_id == move_to:
+        return False
+    conn = _get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        owned = conn.execute(
+            "SELECT COUNT(*) FROM categories WHERE user_id = ? AND id IN (?, ?)",
+            (user_id, category_id, move_to),
+        ).fetchone()[0]
+        if owned != 2:
+            conn.rollback()
+            return False
+        conn.execute("UPDATE activities SET category_id = ? WHERE category_id = ? AND user_id = ?",
+                     (move_to, category_id, user_id))
+        conn.execute(
+            "UPDATE activity_participants SET category_id = ? WHERE category_id = ? AND user_id = ?",
+            (move_to, category_id, user_id))
+        conn.execute("DELETE FROM categories WHERE id = ? AND user_id = ?", (category_id, user_id))
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def fallback_category_id(user_id: int) -> Optional[int]:
+    """The category new or unclassifiable activities land in."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT id FROM categories WHERE user_id = ? "
+        "ORDER BY (name = ?) DESC, position, id LIMIT 1",
+        (user_id, FALLBACK_CATEGORY),
+    ).fetchone()
+    conn.close()
+    return row["id"] if row else None
+
+
+# ══════════════════════════════════════════════════ Activities ══
+
+def get_all_activities(user_id: int) -> list[dict]:
+    """Return every activity the user owns as a plain dict (for the JSON API)."""
+    conn = _get_conn()
+    rows = conn.execute(
+        f"SELECT {ACTIVITY_COLS} FROM activities WHERE user_id = ? "
+        "ORDER BY date IS NOT NULL, date, day, start_time",
         (user_id,),
     ).fetchall()
     conn.close()
@@ -411,24 +774,45 @@ def get_all_activities(user_id: int) -> list[dict]:
 def get_activity(user_id: int, activity_id: int) -> Optional[dict]:
     conn = _get_conn()
     row = conn.execute(
-        "SELECT id, title, day, start_time, end_time, week_type "
-        "FROM activities WHERE id = ? AND user_id = ?",
+        f"SELECT {ACTIVITY_COLS} FROM activities WHERE id = ? AND user_id = ?",
         (activity_id, user_id),
     ).fetchone()
     conn.close()
     return dict(row) if row else None
 
 
+def _dated_fields(date: Optional[str], day: str, week_type: str) -> tuple[str, str]:
+    """A one-off event's weekday always follows its date."""
+    if not date:
+        return day, week_type
+    from datetime import date as _date
+    from schedule_engine import DAYS
+    return DAYS[_date.fromisoformat(date).weekday()], "both"
+
+
 def add_activity(
     user_id: int, title: str, day: str, start_time: str, end_time: str,
-    week_type: str = "both",
+    week_type: str = "both", *, category_id: Optional[int] = None,
+    date: Optional[str] = None, valid_from: Optional[str] = None,
+    valid_until: Optional[str] = None,
 ) -> int:
-    """Insert a new activity and return its id."""
+    """Insert a new activity and return its id.
+
+    Without *category_id* the category is guessed from the title, as the
+    migration does for old activities.
+    """
+    day, week_type = _dated_fields(date, day, week_type)
     conn = _get_conn()
+    if category_id is None:
+        cats = {c["name"]: c["id"] for c in conn.execute(
+            "SELECT id, name FROM categories WHERE user_id = ? ORDER BY position, id", (user_id,))}
+        category_id = cats.get(guess_category_name(title)) or cats.get(FALLBACK_CATEGORY) \
+            or next(iter(cats.values()), None)
     cur = conn.execute(
-        "INSERT INTO activities (user_id, title, day, start_time, end_time, week_type) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, title, day, start_time, end_time, week_type),
+        "INSERT INTO activities (user_id, title, day, start_time, end_time, week_type, "
+        "category_id, date, valid_from, valid_until) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, title, day, start_time, end_time, week_type, category_id, date,
+         valid_from, valid_until),
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -459,49 +843,20 @@ def delete_activity(user_id: int, activity_id: int) -> bool:
 
 def update_activity(
     user_id: int, activity_id: int, title: str, day: str, start_time: str,
-    end_time: str, week_type: str,
+    end_time: str, week_type: str, *, category_id: Optional[int] = None,
+    date: Optional[str] = None, valid_from: Optional[str] = None,
+    valid_until: Optional[str] = None,
 ) -> bool:
     """Replace the fields of an existing activity. Returns True if a row changed."""
+    day, week_type = _dated_fields(date, day, week_type)
     conn = _get_conn()
     cur = conn.execute(
-        "UPDATE activities SET title=?, day=?, start_time=?, end_time=?, week_type=? "
+        "UPDATE activities SET title=?, day=?, start_time=?, end_time=?, week_type=?, "
+        "category_id=COALESCE(?, category_id), date=?, valid_from=?, valid_until=? "
         "WHERE id=? AND user_id=?",
-        (title, day, start_time, end_time, week_type, activity_id, user_id),
+        (title, day, start_time, end_time, week_type, category_id, date, valid_from,
+         valid_until, activity_id, user_id),
     )
     conn.commit()
     conn.close()
     return cur.rowcount > 0
-
-
-def find_conflicts(
-    user_id: int,
-    day: str,
-    start_time: str,
-    end_time: str,
-    week_type: str,
-    exclude_id: Optional[int] = None,
-) -> list[dict]:
-    """Find the user's activities that overlap the given window on the same day.
-
-    Two intervals overlap when ``start_a < end_b AND start_b < end_a``.
-    ``week_type='both'`` conflicts with any week type.
-    """
-    conn = _get_conn()
-    query = """
-        SELECT id, title, day, start_time, end_time, week_type
-        FROM activities
-        WHERE user_id = ?
-          AND day = ?
-          AND start_time < ?
-          AND end_time > ?
-          AND (week_type = ? OR week_type = 'both' OR ? = 'both')
-    """
-    params: list = [user_id, day, end_time, start_time, week_type, week_type]
-
-    if exclude_id is not None:
-        query += " AND id != ?"
-        params.append(exclude_id)
-
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]

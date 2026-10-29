@@ -3,11 +3,16 @@ Schedule Engine — Core business logic for IamBusy.
 
 All schedule computation, timeline building, and status derivation
 lives here, fully decoupled from Flask and the HTTP layer.
+
+A day is described by a list of *entries* — dicts with at least
+``title``, ``start`` and ``end`` (``HH:MM``).  Entries may carry display
+data (``color``, ``category``, ``masked`` …) which is passed through to the
+UI blocks untouched.
 """
 
 import re
 from datetime import datetime, timedelta, time, date
-from typing import Optional
+from typing import Callable, Iterable, Optional
 
 
 # ───────────────────────────────────────────────── constants ──
@@ -39,35 +44,24 @@ MONTHS_LONG: list[str] = [
     "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie",
 ]
 
+BUSY_LABEL = "Ocupat"
+
 
 # ──────────────────────────────────────── schedule validation ──
-def validate_schedule_entry(entry: tuple) -> bool:
-    """Return True if *entry* is a valid (title, start, end) schedule tuple.
-
-    A valid entry has:
-      - exactly three string elements
-      - start / end parseable as ``%H:%M``
-      - end strictly after start
-    """
-    if not isinstance(entry, (tuple, list)) or len(entry) != 3:
-        return False
-    title, start_str, end_str = entry
-    if not all(isinstance(s, str) for s in (title, start_str, end_str)):
-        return False
-    try:
-        start_time = datetime.strptime(start_str, "%H:%M").time()
-        end_time = datetime.strptime(end_str, "%H:%M").time()
-    except ValueError:
-        return False
-    return end_time > start_time
-
-
 def parse_time_safe(value: str) -> Optional[time]:
     """Parse an ``HH:MM`` string into a :class:`~datetime.time`, or *None*."""
     try:
         return datetime.strptime(value, "%H:%M").time()
     except (ValueError, TypeError):
         return None
+
+
+def valid_entry(entry) -> bool:
+    """True if *entry* is a dict with a string title and ``start < end``."""
+    if not isinstance(entry, dict) or not isinstance(entry.get("title"), str):
+        return False
+    start, end = parse_time_safe(entry.get("start")), parse_time_safe(entry.get("end"))
+    return start is not None and end is not None and end > start
 
 
 # ──────────────────────────────────── week parity computation ──
@@ -117,96 +111,129 @@ def relative_day_ro(d: date, today: date) -> str:
     return f"{DAY_DISPLAY[DAYS[d.weekday()]].lower()}, {format_date_ro(d)}"
 
 
+# ──────────────────────────────────────────── recurrence ──
+def occurs_on(act: dict, d: date, academic_start: date) -> bool:
+    """Does activity row *act* happen on date *d*?
+
+    * One-off events (``date`` set) happen on that date only.
+    * Weekly activities happen on their weekday, in weeks of the right
+      parity, from the start of the academic year on, and only inside their
+      optional ``valid_from`` … ``valid_until`` range.
+    """
+    iso = d.isoformat()
+    if act.get("date"):
+        return act["date"] == iso
+    if act.get("day") != DAYS[d.weekday()] or d < academic_start:
+        return False
+    if act.get("valid_from") and iso < act["valid_from"]:
+        return False
+    if act.get("valid_until") and iso > act["valid_until"]:
+        return False
+    week_type = act.get("week_type", "both")
+    if week_type == "both":
+        return True
+    return (week_type == "odd") == is_odd_week(academic_start, d)
+
+
+def _ranges_overlap(a_from, a_to, b_from, b_to) -> bool:
+    """Inclusive ISO-date ranges; ``None`` means open-ended."""
+    return (a_to is None or b_from is None or b_from <= a_to) and \
+           (b_to is None or a_from is None or a_from <= b_to)
+
+
+def can_coincide(a: dict, b: dict, academic_start: date) -> bool:
+    """Could activities *a* and *b* ever fall on the same day?"""
+    if a.get("date") and b.get("date"):
+        return a["date"] == b["date"]
+    if a.get("date") or b.get("date"):
+        dated, weekly = (a, b) if a.get("date") else (b, a)
+        try:
+            d = date.fromisoformat(dated["date"])
+        except ValueError:
+            return False
+        return occurs_on(weekly, d, academic_start)
+    if a.get("day") != b.get("day"):
+        return False
+    wa, wb = a.get("week_type", "both"), b.get("week_type", "both")
+    if not (wa == wb or "both" in (wa, wb)):
+        return False
+    return _ranges_overlap(a.get("valid_from"), a.get("valid_until"),
+                           b.get("valid_from"), b.get("valid_until"))
+
+
+def find_conflicts(candidate: dict, existing: Iterable[dict], academic_start: date,
+                   exclude_id: Optional[int] = None) -> list[dict]:
+    """Activities from *existing* that overlap *candidate* in time on some day.
+
+    Two intervals overlap when ``start_a < end_b AND start_b < end_a``.
+    """
+    return [
+        act for act in existing
+        if act.get("id") != exclude_id
+        and act["start_time"] < candidate["end_time"]
+        and candidate["start_time"] < act["end_time"]
+        and can_coincide(candidate, act, academic_start)
+    ]
+
+
 # ────────────────────────── next-activity look-ahead ──
 def find_next_activity(
-    schedule_odd: dict[str, list[tuple[str, str, str]]],
-    schedule_even: dict[str, list[tuple[str, str, str]]],
-    academic_start: date,
+    entries_for: Callable[[date], list[dict]],
     from_date: date,
+    until: Optional[date] = None,
+    days_ahead: int = 14,
 ) -> Optional[dict]:
-    """Find the first course on the next workday after *from_date*.
+    """Find the first activity on a day after *from_date*.
 
-    Skips weekends and any day before the academic year starts.
+    *entries_for* returns the (already visibility-filtered) entries of a
+    date.  The search stops after *days_ahead* days or at *until*.
 
     Returns
     -------
-    ``{"day_name": str, "date": date, "start_time": str}`` or *None*
-    if no courses are found within the next 14 days (counted from the
-    later of *from_date* and the day before *academic_start*).
+    ``{"day_name": str, "date": date, "start_time": str}`` or *None*.
     """
-    base = max(from_date, academic_start - timedelta(days=1))
-    for offset in range(1, 15):  # look up to two weeks ahead
-        candidate = base + timedelta(days=offset)
-        weekday = candidate.weekday()  # 0=Mon … 6=Sun
-
-        # Skip Saturday (5) and Sunday (6)
-        if weekday >= 5:
-            continue
-
-        odd = is_odd_week(academic_start, candidate)
-        schedule = schedule_odd if odd else schedule_even
-        day_name = DAYS[weekday]
-        entries = schedule.get(day_name, [])
-
-        # Find the earliest valid course
-        earliest_start: Optional[str] = None
-        for entry in entries:
-            if not validate_schedule_entry(entry):
-                continue
-            _, start_str, _ = entry
-            if earliest_start is None or start_str < earliest_start:
-                earliest_start = start_str
-
-        if earliest_start:
+    for offset in range(1, days_ahead + 1):
+        candidate = from_date + timedelta(days=offset)
+        if until is not None and candidate > until:
+            break
+        starts = [e["start"] for e in entries_for(candidate) if valid_entry(e)]
+        if starts:
             return {
-                "day_name": day_name,
+                "day_name": DAYS[candidate.weekday()],
                 "date": candidate,
-                "start_time": earliest_start,
+                "start_time": min(starts),
             }
-
     return None
 
 
 # ─────────────────────────────────────── timeline construction ──
-def build_day_timeline(
-    schedule: dict[str, list[tuple[str, str, str]]],
-    target_date: Optional[date] = None,
-) -> list[dict]:
+def build_day_timeline(entries: list[dict], target_date: Optional[date] = None) -> list[dict]:
     """Build an ordered list of time-blocks (courses + breaks) for a day.
 
     Each block is a dict with keys:
         ``type`` ("course" | "break"), ``title`` (str, courses only),
-        ``start_dt``, ``end_dt`` (datetime).
+        ``start_dt``, ``end_dt`` (datetime), ``entry`` (courses only).
 
-    Parameters
-    ----------
-    schedule:
-        A mapping of day-name → list of ``(title, HH:MM, HH:MM)`` tuples.
-    target_date:
-        The calendar date to build for.  Defaults to today.
+    Overlapping entries (e.g. an accepted invite on top of a course) are
+    kept as separate course blocks; breaks only appear where nothing is
+    scheduled.
     """
     if target_date is None:
         target_date = datetime.now().date()
 
-    day_name = DAYS[target_date.weekday()]
-    raw_blocks = schedule.get(day_name, [])
-
-    # Parse into interval dicts
     intervals: list[dict] = []
-    for entry in raw_blocks:
-        if not validate_schedule_entry(entry):
+    for entry in entries:
+        if not valid_entry(entry):
             continue
-        title, start_str, end_str = entry
-        start_dt = datetime.combine(target_date, datetime.strptime(start_str, "%H:%M").time())
-        end_dt = datetime.combine(target_date, datetime.strptime(end_str, "%H:%M").time())
         intervals.append({
             "type": "course",
-            "title": title.strip(),
-            "start_dt": start_dt,
-            "end_dt": end_dt,
+            "title": entry["title"].strip(),
+            "start_dt": datetime.combine(target_date, parse_time_safe(entry["start"])),
+            "end_dt": datetime.combine(target_date, parse_time_safe(entry["end"])),
+            "entry": entry,
         })
 
-    intervals.sort(key=lambda x: x["start_dt"])
+    intervals.sort(key=lambda x: (x["start_dt"], x["end_dt"]))
 
     # Interleave break blocks
     full_timeline: list[dict] = []
@@ -221,7 +248,7 @@ def build_day_timeline(
                 "end_dt": iv["start_dt"],
             })
         full_timeline.append(iv)
-        cursor = iv["end_dt"]
+        cursor = max(cursor, iv["end_dt"])
 
     if cursor < end_of_day:
         full_timeline.append({
@@ -243,6 +270,15 @@ def minutes_until(target_dt: datetime, now_dt: datetime) -> int:
     delta = target_dt - now_dt
     seconds = max(0, int(delta.total_seconds()))
     return (seconds + 59) // 60  # ceiling
+
+
+def _busy_text(user_name: str, block: dict, end_str: str) -> str:
+    entry = block.get("entry") or {}
+    if entry.get("masked"):
+        return f"{user_name} are ceva programat până la ora {end_str}."
+    subject, _room = parse_block_title(block.get("title", ""))
+    subject, _kind = split_course_type(subject)
+    return f"{user_name} are {subject or 'o activitate'} până la ora {end_str}."
 
 
 def compute_status(
@@ -302,12 +338,14 @@ def compute_status(
             current_block = timeline[-1]
         return main, sub, current_block
 
-    # Normal case: find which block we are in right now
+    # Normal case: find which block we are in right now.  With overlapping
+    # activities the one ending last decides how long we stay busy.
     current_block: Optional[dict] = None
     for blk in timeline:
         if blk["start_dt"] <= now_dt < blk["end_dt"]:
-            current_block = blk
-            break
+            if current_block is None or (
+                    blk["type"] == "course" and blk["end_dt"] > current_block["end_dt"]):
+                current_block = blk
 
     if current_block is None:
         current_block = timeline[0]
@@ -316,7 +354,7 @@ def compute_status(
     minutes = minutes_until(current_block["end_dt"], now_dt)
 
     if current_block["type"] == "course":
-        status_main = f"{user_name} are curs până la ora {end_str}."
+        status_main = _busy_text(user_name, current_block, end_str)
     else:
         status_main = f"{user_name} e liber până la ora {end_str}."
 
@@ -356,45 +394,50 @@ def parse_block_title(full_title: str) -> tuple[str, str]:
     return full_title.strip(), ""
 
 
-def _hhmm_to_minutes(value: str) -> int:
+def hhmm_to_minutes(value: str) -> int:
     """Convert ``HH:MM`` to minutes since midnight (0 on parse failure)."""
     t = parse_time_safe(value)
     return t.hour * 60 + t.minute if t else 0
 
 
-def _minutes_to_hhmm(total: int) -> str:
+def minutes_to_hhmm(total: int) -> str:
     total = max(0, min(total, 23 * 60 + 59))
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
+def entry_color(entry: dict) -> str:
+    """CSS colour key of an entry: ``busy`` for masked ones."""
+    if entry.get("masked"):
+        return "busy"
+    return entry.get("color") or "x"
+
+
 def busy_segments(
-    entries: list[tuple[str, str, str]],
+    entries: list[dict],
     window_start_hour: int = 7,
     window_end_hour: int = 22,
 ) -> list[dict]:
-    """Return course intervals as percentages of a daily hour window.
+    """Return activity intervals as percentages of a daily hour window.
 
     Used to draw the tiny "busy bar" under each day in the week strip and
-    the month calendar.  Each segment is ``{"left": %, "width": %, "kind"}``.
+    the month calendar.  Each segment is ``{"left": %, "width": %, "kind"}``
+    where *kind* is the colour key.
     """
     w0 = window_start_hour * 60
     w1 = window_end_hour * 60
     span = w1 - w0
     segments: list[dict] = []
     for entry in entries:
-        if not validate_schedule_entry(entry):
+        if not valid_entry(entry):
             continue
-        title, start_str, end_str = entry
-        s = max(w0, _hhmm_to_minutes(start_str))
-        e = min(w1, _hhmm_to_minutes(end_str))
+        s = max(w0, hhmm_to_minutes(entry["start"]))
+        e = min(w1, hhmm_to_minutes(entry["end"]))
         if e <= s:
             continue
-        subject, _room = parse_block_title(title)
-        _subj, kind = split_course_type(subject)
         segments.append({
             "left": round((s - w0) / span * 100, 2),
             "width": round((e - s) / span * 100, 2),
-            "kind": kind or "x",
+            "kind": entry_color(entry),
         })
     return segments
 
@@ -405,23 +448,45 @@ def free_windows(timeline: list[dict], min_minutes: int = 30) -> list[dict]:
     Leading / trailing free time is excluded — it is implied by the first
     and last course.  Each window is ``{"start", "end", "duration"}``.
     """
-    courses = [b for b in timeline if b["type"] == "course"]
-    if len(courses) < 2:
+    breaks = [b for b in timeline if b["type"] == "break"]
+    if not any(b["type"] == "course" for b in timeline):
         return []
     windows: list[dict] = []
-    for prev, nxt in zip(courses, courses[1:]):
-        gap = int((nxt["start_dt"] - prev["end_dt"]).total_seconds() // 60)
+    for blk in breaks:
+        if blk is timeline[0] or blk is timeline[-1]:
+            continue
+        gap = int((blk["end_dt"] - blk["start_dt"]).total_seconds() // 60)
         if gap >= min_minutes:
             windows.append({
-                "start": prev["end_dt"].strftime("%H:%M"),
-                "end": nxt["start_dt"].strftime("%H:%M"),
+                "start": blk["start_dt"].strftime("%H:%M"),
+                "end": blk["end_dt"].strftime("%H:%M"),
                 "duration": format_duration(gap),
             })
     return windows
 
 
+def describe_entry(entry: dict) -> dict:
+    """Title parsing + display fields shared by the day view and the API."""
+    if entry.get("masked"):
+        return {"subject": BUSY_LABEL, "kind": "", "kind_label": "", "room": "",
+                "category": "", "color": "busy", "masked": True}
+    subject, room = parse_block_title(entry.get("title", ""))
+    subject, kind = split_course_type(subject)
+    category = entry.get("category", "")
+    kind_label = COURSE_TYPE_LABELS.get(kind, "")
+    return {
+        "subject": subject,
+        "kind": kind,
+        "kind_label": "" if kind_label == category else kind_label,
+        "room": room,
+        "category": category,
+        "color": entry_color(entry),
+        "masked": False,
+    }
+
+
 def day_summary(
-    schedule: dict[str, list[tuple[str, str, str]]],
+    entries: list[dict],
     target_date: date,
     academic_start: date,
 ) -> dict:
@@ -431,26 +496,23 @@ def day_summary(
     how busy that day already is.
     """
     day_name = DAYS[target_date.weekday()]
-    entries = schedule.get(day_name, [])
     activities: list[dict] = []
-    for entry in sorted(entries, key=lambda e: e[1]):
-        if not validate_schedule_entry(entry):
-            continue
-        title, start_str, end_str = entry
-        subject, room = parse_block_title(title)
-        subject, kind = split_course_type(subject)
+    for entry in sorted((e for e in entries if valid_entry(e)), key=lambda e: e["start"]):
+        info = describe_entry(entry)
         activities.append({
-            "start": start_str,
-            "end": end_str,
-            "subject": subject,
-            "kind": kind,
-            "kind_label": COURSE_TYPE_LABELS.get(kind, ""),
-            "room": room,
+            "start": entry["start"],
+            "end": entry["end"],
+            "subject": info["subject"],
+            "kind": info["color"],
+            "kind_label": info["category"] or info["kind_label"],
+            "room": info["room"],
+            "masked": info["masked"],
+            "shared": bool(entry.get("with")),
         })
     busy = sum(
-        _hhmm_to_minutes(a["end"]) - _hhmm_to_minutes(a["start"]) for a in activities
+        hhmm_to_minutes(a["end"]) - hhmm_to_minutes(a["start"]) for a in activities
     )
-    timeline = build_day_timeline(schedule, target_date)
+    timeline = build_day_timeline(entries, target_date)
     week_num = academic_week_number(academic_start, target_date)
     return {
         "date": target_date.isoformat(),
@@ -474,25 +536,24 @@ def prepare_blocks_for_ui(
 
     Each returned dict has keys:
         ``type``, ``title``, ``subject``, ``kind``, ``kind_label``, ``room``,
-        ``start``, ``end``, ``start_iso``, ``end_iso``, ``duration``,
-        ``is_current``.
+        ``category``, ``color``, ``masked``, ``with``, ``start``, ``end``,
+        ``start_iso``, ``end_iso``, ``duration``, ``is_current``.
     """
     blocks: list[dict] = []
     for blk in timeline:
-        full_title = blk.get("title", "")
-        subject, room = parse_block_title(full_title)
-        subject, kind = split_course_type(subject)
+        entry = blk.get("entry") or {}
+        info = describe_entry(entry) if blk["type"] == "course" else {
+            "subject": "", "kind": "", "kind_label": "", "room": "", "category": "",
+            "color": "", "masked": False}
         minutes = int((blk["end_dt"] - blk["start_dt"]).total_seconds() // 60)
         # 23:59 is the end-of-day sentinel; count it as a full hour.
         if blk["end_dt"].time() == time(23, 59):
             minutes += 1
         ui = {
             "type": blk["type"],
-            "title": full_title,
-            "subject": subject,
-            "kind": kind,
-            "kind_label": COURSE_TYPE_LABELS.get(kind, ""),
-            "room": room,
+            "title": "" if info["masked"] else blk.get("title", ""),
+            **info,
+            "with": entry.get("with", []),
             "start": blk["start_dt"].strftime("%H:%M"),
             "end": blk["end_dt"].strftime("%H:%M"),
             "start_iso": blk["start_dt"].isoformat(),
@@ -508,7 +569,38 @@ def prepare_blocks_for_ui(
             s = max(s, 7 * 60)
             e = min(e, 22 * 60)
             if e - s >= 30:
-                ui["suggest_start"] = _minutes_to_hhmm(s)
-                ui["suggest_end"] = _minutes_to_hhmm(min(e, s + 120))
+                ui["suggest_start"] = minutes_to_hhmm(s)
+                ui["suggest_end"] = minutes_to_hhmm(min(e, s + 120))
         blocks.append(ui)
     return blocks
+
+
+# ─────────────────────────────────────────── interval maths ──
+def merge_intervals(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Merge overlapping / touching ``(start_min, end_min)`` intervals."""
+    merged: list[list[int]] = []
+    for s, e in sorted(intervals):
+        if e <= s:
+            continue
+        if merged and s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    return [(s, e) for s, e in merged]
+
+
+def free_between(busy: list[tuple[int, int]], window: tuple[int, int],
+                 min_minutes: int = 30) -> list[tuple[int, int]]:
+    """Gaps of at least *min_minutes* inside *window* not covered by *busy*."""
+    w0, w1 = window
+    free: list[tuple[int, int]] = []
+    cursor = w0
+    for s, e in merge_intervals(busy):
+        if e <= w0 or s >= w1:
+            continue
+        if s > cursor:
+            free.append((cursor, min(s, w1)))
+        cursor = max(cursor, e)
+    if cursor < w1:
+        free.append((cursor, w1))
+    return [(s, e) for s, e in free if e - s >= min_minutes]

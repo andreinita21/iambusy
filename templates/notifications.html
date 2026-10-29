@@ -1,0 +1,30 @@
+{% extends "auth_base.html" %}
+{% block title %}Notificări{% endblock %}
+{% block body_class %}panel-page{% endblock %}
+{% block shell_class %}panel-shell{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block actions %}
+<a href="/" class="btn">Orar</a>
+<a href="/friends" class="btn">Prieteni</a>
+{% endblock %}
+
+{% block content %}
+<header class="panel-hero panel-hero-cyan">
+    <span class="tag tag-ink">Notificări</span>
+    <h1 class="panel-title">Ce s-a întâmplat</h1>
+    <p class="panel-sub">Cererile și invitațiile la care trebuie să răspunzi sunt pe pagina Prieteni.</p>
+</header>
+
+<section class="panel-card">
+    {% if notifications %}
+    <ul class="news">
+        {% for n in notifications %}
+        <li class="{{ 'unread' if n.unread }}"><span>{{ n.message }}</span><small class="mono">{{ n.when }}</small></li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint">Nicio notificare încă.</p>
+    {% endif %}
+</section>
+{% endblock %}

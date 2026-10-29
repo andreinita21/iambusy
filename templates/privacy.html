@@ -1,0 +1,215 @@
+{% extends "auth_base.html" %}
+{% block title %}Confidențialitate{% endblock %}
+{% block body_class %}panel-page{% endblock %}
+{% block shell_class %}panel-shell panel-wide{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block actions %}
+<a href="/" class="btn">Orar</a>
+<a href="/friends" class="btn">Prieteni</a>
+{% endblock %}
+
+{% macro level_select(name, current, allow_inherit, inherit_hint) %}
+<div class="levels" role="radiogroup">
+    {% if allow_inherit %}
+    <label class="lv lv-inherit" title="Folosește regula mai generală">
+        <input type="radio" name="{{ name }}" value="inherit" {% if not current %}checked{% endif %}>
+        <span>Moștenește<small>{{ inherit_hint }}</small></span>
+    </label>
+    {% endif %}
+    {% for lv in levels %}
+    <label class="lv lv-{{ lv }}">
+        <input type="radio" name="{{ name }}" value="{{ lv }}" {% if current == lv or (not allow_inherit and not current and lv == default_level) %}checked{% endif %}>
+        <span>{{ level_labels[lv] }}</span>
+    </label>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<header class="panel-hero">
+    <span class="tag tag-ink">Confidențialitate</span>
+    <h1 class="panel-title">Cine ce vede</h1>
+    <p class="panel-sub">Fiecare categorie are un nivel pentru prieteni — și îl poți schimba pe grupuri,
+        pe fiecare prieten și pe fiecare activitate în parte.</p>
+    <dl class="level-legend">
+        <div><dt><span class="lv-dot lv-full"></span>Complet</dt><dd>titlu, loc, oră</dd></div>
+        <div><dt><span class="lv-dot lv-busy"></span>Doar ocupat</dt><dd>bloc roșu „Ocupat”, fără detalii</dd></div>
+        <div><dt><span class="lv-dot lv-hidden"></span>Ascuns</dt><dd>nu apare deloc — pari liber</dd></div>
+    </dl>
+</header>
+
+{# ── Rules editor ─────────────────────────────────────────────── #}
+<section class="panel-card" id="rules" aria-labelledby="rules-title">
+    <div class="panel-card-head">
+        <h2 class="panel-card-title" id="rules-title">Reguli pentru: {{ subject_label }}</h2>
+        {% if subject_type == 'friend' %}
+        <a class="btn btn-sm" href="/preview/{{ subject.username }}">Vezi cum te vede</a>
+        {% endif %}
+    </div>
+
+    <nav class="subject-picker" aria-label="Pentru cine setezi regulile">
+        <a class="chip-link{{ ' is-active' if subject_key == 'all' }}" href="/privacy?for=all#rules">Toți prietenii</a>
+        {% for gr in groups %}
+        <a class="chip-link sw-{{ gr.color }}{{ ' is-active' if subject_key == 'g' ~ gr.id }}" href="/privacy?for=g{{ gr.id }}#rules">{{ gr.name }}</a>
+        {% endfor %}
+        {% if friends %}
+        <div class="select-wrap subject-friend">
+            <label class="sr-only" for="friend-pick">Un prieten anume</label>
+            <select class="select select-sm" id="friend-pick" data-navigate>
+                <option value="">Un prieten anume…</option>
+                {% for f in friends %}
+                <option value="/privacy?for=f{{ f.id }}#rules" {% if subject_key == 'f' ~ f.id %}selected{% endif %}>{{ f.display_name }} (@{{ f.username }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </nav>
+
+    <p class="hint">
+        {% if subject_type == 'all' %}Nivelul de bază pentru fiecare prieten. Fără o regulă, o categorie apare
+        <b>{{ level_labels[default_level] }}</b>.
+        {% elif subject_type == 'group' %}Se aplică membrilor grupului și bate regula „Toți prietenii”. Dacă cineva e
+        în mai multe grupuri cu reguli diferite, câștigă cea mai privată.
+        {% else %}Doar pentru {{ subject.display_name }}: bate regulile grupurilor și pe „Toți prietenii”.
+        Regulile puse pe o activitate anume (din editorul de orar) au prioritate peste toate acestea.{% endif %}
+    </p>
+
+    <form class="auth-form" method="post" action="/privacy/rules">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="for" value="{{ subject_key }}">
+        <ul class="rule-rows">
+            {% for c in rows %}
+            <li class="rule-row">
+                <div class="rule-cat"><span class="dot sw-{{ c.color }}"></span><b>{{ c.name }}</b>
+                    <small>{{ c.activity_count }} act.</small></div>
+                {{ level_select('level-' ~ c.id, c.level, subject_type != 'all',
+                   '→ ' ~ level_labels[c.effective] if not c.level else '') }}
+                {% if subject_type == 'friend' and not c.level %}
+                <span class="rule-effective">vede acum: <b>{{ level_labels[c.effective] }}</b></span>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+
+        {% if subject_type == 'friend' %}
+        <input type="hidden" name="groups_present" value="1">
+        <fieldset class="group-pick">
+            <legend>Grupurile lui {{ subject.display_name }}</legend>
+            {% if groups %}
+            {% for gr in groups %}
+            <label class="check-chip sw-{{ gr.color }}">
+                <input type="checkbox" name="groups" value="{{ gr.id }}" {% if gr.id in member_groups %}checked{% endif %}>
+                <span>{{ gr.name }}</span>
+            </label>
+            {% endfor %}
+            {% else %}
+            <span class="hint">Nu ai grupuri încă — creează unul mai jos.</span>
+            {% endif %}
+        </fieldset>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary">Salvează regulile</button>
+    </form>
+</section>
+
+{# ── Categories ───────────────────────────────────────────────── #}
+<section class="panel-card" id="categories" aria-labelledby="cat-title">
+    <h2 class="panel-card-title" id="cat-title">Categorii</h2>
+    <p class="hint">Fiecare activitate are o categorie; culoarea ei colorează cardurile din orar.</p>
+    <ul class="rows">
+        {% for c in categories %}
+        <li class="row cat-row">
+            <form class="cat-form" method="post" action="/categories/{{ c.id }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label class="sr-only" for="cat-name-{{ c.id }}">Nume</label>
+                <input class="input input-sm" type="text" id="cat-name-{{ c.id }}" name="name" value="{{ c.name }}" maxlength="40" required>
+                <div class="swatches" role="radiogroup" aria-label="Culoare">
+                    {% for col in colors %}
+                    <label class="swatch sw-{{ col }}" title="{{ col }}"><input type="radio" name="color" value="{{ col }}" {% if c.color == col %}checked{% endif %}><span></span></label>
+                    {% endfor %}
+                </div>
+                <span class="row-meta mono">{{ c.activity_count }} activități</span>
+                <button type="submit" class="btn btn-sm">Salvează</button>
+            </form>
+            {% if categories | length > 1 %}
+            <details class="danger-zone">
+                <summary class="btn btn-sm btn-ghost">Șterge…</summary>
+                <form class="danger-form" method="post" action="/categories/{{ c.id }}/delete">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="move-{{ c.id }}">Mută activitățile în:</label>
+                    <div class="select-wrap">
+                        <select class="select select-sm" id="move-{{ c.id }}" name="move_to">
+                            {% for o in categories if o.id != c.id %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-danger">Șterge categoria</button>
+                </form>
+            </details>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    <form class="cat-form cat-new" method="post" action="/categories">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="sr-only" for="new-cat">Categorie nouă</label>
+        <input class="input input-sm" type="text" id="new-cat" name="name" maxlength="40" placeholder="Categorie nouă, ex. Sport" required>
+        <div class="swatches" role="radiogroup" aria-label="Culoare">
+            {% for col in colors %}
+            <label class="swatch sw-{{ col }}"><input type="radio" name="color" value="{{ col }}" {% if loop.first %}checked{% endif %}><span></span></label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-sm btn-accent">Adaugă</button>
+    </form>
+</section>
+
+{# ── Groups ───────────────────────────────────────────────────── #}
+<section class="panel-card" id="groups" aria-labelledby="groups-title">
+    <h2 class="panel-card-title" id="groups-title">Grupuri de prieteni</h2>
+    <p class="hint">Grupurile sunt doar ale tale — nimeni nu vede în ce grup l-ai pus.</p>
+    {% for gr in groups %}
+    <form class="group-card{{ ' is-active' if subject_key == 'g' ~ gr.id }}" method="post" action="/groups/{{ gr.id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="cat-form">
+            <span class="dot sw-{{ gr.color }}"></span>
+            <label class="sr-only" for="group-{{ gr.id }}">Nume</label>
+            <input class="input input-sm" type="text" id="group-{{ gr.id }}" name="name" value="{{ gr.name }}" maxlength="40" required>
+            <div class="swatches" role="radiogroup" aria-label="Culoare">
+                {% for col in colors %}
+                <label class="swatch sw-{{ col }}"><input type="radio" name="color" value="{{ col }}" {% if gr.color == col %}checked{% endif %}><span></span></label>
+                {% endfor %}
+            </div>
+            <a class="btn btn-sm" href="/privacy?for=g{{ gr.id }}#rules">Reguli</a>
+        </div>
+        <fieldset class="group-pick">
+            <legend>Membri ({{ gr.member_ids | length }})</legend>
+            {% for f in friends %}
+            <label class="check-chip">
+                <input type="checkbox" name="members" value="{{ f.id }}" {% if f.id in gr.member_ids %}checked{% endif %}>
+                <span>{{ f.display_name }}</span>
+            </label>
+            {% else %}
+            <span class="hint">Adaugă întâi prieteni.</span>
+            {% endfor %}
+        </fieldset>
+        <div class="row-actions">
+            <button type="submit" class="btn btn-sm btn-primary">Salvează grupul</button>
+            <button type="submit" class="btn btn-sm btn-danger" formaction="/groups/{{ gr.id }}/delete">Șterge</button>
+        </div>
+    </form>
+    {% endfor %}
+    <form class="cat-form cat-new" method="post" action="/groups">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="sr-only" for="new-group">Grup nou</label>
+        <input class="input input-sm" type="text" id="new-group" name="name" maxlength="40" placeholder="Grup nou, ex. Colegi" required>
+        <div class="swatches" role="radiogroup" aria-label="Culoare">
+            {% for col in colors %}
+            <label class="swatch sw-{{ col }}"><input type="radio" name="color" value="{{ col }}" {% if loop.first %}checked{% endif %}><span></span></label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-sm btn-accent">Creează grupul</button>
+    </form>
+</section>
+{% endblock %}
+
+{% block scripts %}<script src="/static/social.js"></script>{% endblock %}

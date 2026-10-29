@@ -1,0 +1,21 @@
+{% extends "auth_base.html" %}
+{% block title %}Program protejat{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    <header class="auth-head auth-head-yellow">
+        <span class="tag tag-ink">Program partajat</span>
+        <h1 class="auth-title" id="auth-title">Introdu PIN-ul</h1>
+        <p class="auth-lead">Persoana care ți-a trimis linkul ți-a dat și un PIN de 4–8 cifre.</p>
+    </header>
+    <form class="auth-form" method="post" action="/s/{{ token }}/pin">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+            <label for="pin">PIN</label>
+            <input class="input input-code" type="password" id="pin" name="pin" inputmode="numeric"
+                pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="off" required autofocus>
+        </div>
+        <button type="submit" class="btn btn-accent btn-block">Deschide programul</button>
+    </form>
+</section>
+{% endblock %}

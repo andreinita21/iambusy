@@ -1,0 +1,49 @@
+{% extends "auth_base.html" %}
+{% block title %}Invitație de prietenie{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    {% if state in ('invalid', 'limited') %}
+    <header class="auth-head">
+        <span class="tag tag-ink">Link de prietenie</span>
+        <h1 class="auth-title" id="auth-title">Link invalid</h1>
+        <p class="auth-lead">{% if state == 'limited' %}Prea multe încercări. Mai încearcă peste o oră.
+            {% else %}Linkul a expirat, a fost folosit de prea multe ori sau a fost dezactivat. Cere unul nou.{% endif %}</p>
+    </header>
+    <p class="auth-foot"><a href="/">Mergi la IamBusy</a></p>
+    {% else %}
+    <header class="auth-head auth-head-lime">
+        <span class="tag tag-ink">Link de prietenie</span>
+        <h1 class="auth-title" id="auth-title">{{ link.display_name }}</h1>
+        <p class="auth-lead mono">@{{ link.username }}</p>
+        <p class="auth-lead">
+            {% if state == 'own' %}Acesta e linkul tău. Trimite-l cuiva ca să devină prietenul tău.
+            {% elif state == 'already' %}Sunteți deja prieteni.
+            {% else %}te invită să fiți prieteni pe IamBusy — o să vă vedeți unul altuia programul,
+            atât cât vă permiteți.{% endif %}
+        </p>
+    </header>
+
+    <div class="auth-form">
+        {% if state == 'confirm' %}
+        <form method="post" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-accent btn-block">Acceptă prietenia</button>
+        </form>
+        <a class="btn btn-block" href="/friends">Nu acum</a>
+        {% elif state == 'anonymous' %}
+        <a class="btn btn-primary btn-block" href="/login?next={{ request.path | urlencode }}">Am cont — autentifică-mă</a>
+        {% if can_signup %}
+        <a class="btn btn-accent btn-block" href="/register?friend={{ link.code }}">Creează-ți cont</a>
+        {% else %}
+        <p class="hint">Ca să-ți faci cont ai nevoie de un cod de invitație de la administrator.</p>
+        {% endif %}
+        {% elif state == 'already' %}
+        <a class="btn btn-primary btn-block" href="/friends/{{ link.username }}">Vezi programul</a>
+        {% else %}
+        <a class="btn btn-primary btn-block" href="/friends#links">Linkurile mele</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -34,6 +34,7 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
+import db_social
 
 bp = Blueprint("auth", __name__)
 
@@ -295,12 +296,22 @@ def csrf_protect():
         if request.path.startswith("/api/"):
             return jsonify({"error": "Sesiune expirată — reîncarcă pagina.", "code": "csrf"}), 403
         flash("Formularul a expirat. Încearcă din nou.", "error")
-        return redirect(request.path if request.endpoint in ("auth.login", "auth.register")
-                        else url_for("index"))
+        # Pages reachable without an account go back to themselves.
+        if request.endpoint in ("auth.login", "auth.register", "social.friend_link"):
+            return redirect(request.path)
+        if request.endpoint == "sharing.share_pin":
+            return redirect(request.path.rsplit("/", 1)[0])
+        return redirect(url_for("index"))
     return None
 
 
 # ══════════════════════════════════════════════════ Decorators ══
+
+def absolute_url(path: str) -> str:
+    """Full link to *path* for copying / sharing (https behind the proxy)."""
+    scheme = "https" if _settings["cookie_secure"] else request.scheme
+    return f"{scheme}://{request.host}{path}"
+
 
 def safe_next(target) -> str:
     """Only allow redirects to local paths (no open redirect)."""
@@ -375,17 +386,47 @@ def login():
     return render_template("login.html", username=username, next_url=next_url)
 
 
+FRIEND_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def normalize_friend_code(raw: str) -> str:
+    code = (raw or "").strip()
+    return code if FRIEND_CODE_RE.match(code) else ""
+
+
+def friend_signup_enabled() -> bool:
+    """Admin switch: may friend links create accounts (bypassing invite codes)?"""
+    return db.get_setting("friend_link_signup", "1") == "1"
+
+
 @bp.route("/register", methods=["GET", "POST"])
 def register():
     if g.user is not None:
         return redirect(url_for("index"))
 
-    form = {"username": "", "display_name": "", "invite": "", "from_link": False}
-    if request.method == "GET" and request.args.get("code"):
+    form = {"username": "", "display_name": "", "invite": "", "from_link": False,
+            "friend": "", "friend_owner": None}
+    ip_key = f"register-ip:{client_ip()}"
+    friend_code = normalize_friend_code(request.values.get("friend"))
+    if friend_code:
+        # Arriving through someone's friend link: it replaces the invite
+        # code when the administrator allows that.
+        if _limited(ip_key, LIMIT_REGISTER_IP):
+            flash("Prea multe încercări. Încearcă din nou peste o oră.", "error")
+            return render_template("register.html", form=form), 429
+        link = db_social.get_usable_friend_link(friend_code) if friend_signup_enabled() else None
+        if link is None:
+            db.record_attempt(ip_key)
+            flash("Linkul de prietenie nu mai este valid sau nu poate crea conturi. "
+                  "Cere un cod de invitație.", "error")
+        else:
+            form["friend"] = friend_code
+            form["friend_owner"] = {"display_name": link["display_name"],
+                                    "username": link["username"]}
+    elif request.method == "GET" and request.args.get("code"):
         # Arriving through an invite link: check the code right away so the
         # visitor doesn't fill in the whole form for nothing.  Wrong codes
         # count against the same limit as failed registrations.
-        ip_key = f"register-ip:{client_ip()}"
         code = normalize_invite(request.args.get("code"))
         if _limited(ip_key, LIMIT_REGISTER_IP):
             flash("Prea multe încercări. Încearcă din nou peste o oră.", "error")
@@ -400,11 +441,10 @@ def register():
         form["from_link"] = request.form.get("from_link") == "1"
         form["username"] = normalize_username(request.form.get("username"))[:64]
         form["display_name"] = " ".join((request.form.get("display_name") or "").split())[:80]
-        form["invite"] = normalize_invite(request.form.get("invite"))
+        form["invite"] = "" if form["friend"] else normalize_invite(request.form.get("invite"))
         password = request.form.get("password") or ""
         confirm = request.form.get("password_confirm") or ""
 
-        ip_key = f"register-ip:{client_ip()}"
         if _limited(ip_key, LIMIT_REGISTER_IP):
             flash("Prea multe încercări. Încearcă din nou peste o oră.", "error")
             return render_template("register.html", form=form), 429
@@ -414,7 +454,7 @@ def register():
             or validate_display_name(form["display_name"])
             or validate_password(password, form["username"], form["display_name"])
             or (None if hmac.compare_digest(password, confirm) else "Parolele nu coincid.")
-            or (None if form["invite"] else "Ai nevoie de un cod de invitație.")
+            or (None if form["invite"] or form["friend"] else "Ai nevoie de un cod de invitație.")
         )
         if error is None and db.get_user_by_username(form["username"]):
             error = "Numele de utilizator este deja folosit."
@@ -428,7 +468,8 @@ def register():
                 display_name=form["display_name"],
                 password_hash=hash_password(password),
                 week1_start=_settings["default_week1_start"].isoformat(),
-                invite_code=form["invite"],
+                invite_code=form["invite"] or None,
+                friend_code=form["friend"] or None,
             )
         except sqlite3.IntegrityError:
             flash("Numele de utilizator este deja folosit.", "error")
@@ -440,7 +481,11 @@ def register():
             return render_template("register.html", form=form), 400
 
         start_session(user_id, persistent=True)
-        flash("Cont creat. Bine ai venit!", "ok")
+        if form["friend"]:
+            flash(f"Cont creat. Tu și {form['friend_owner']['display_name']} sunteți acum "
+                  "prieteni.", "ok")
+        else:
+            flash("Cont creat. Bine ai venit!", "ok")
         return redirect(url_for("manage"))
 
     return render_template("register.html", form=form)
@@ -572,14 +617,13 @@ def _render_admin(temp_password=None):
         u["created_str"] = _fmt_ts(u["created_at"])
         u["last_login_str"] = _fmt_ts(u["last_login_at"])
     invites = db.list_invites()
-    scheme = "https" if _settings["cookie_secure"] else request.scheme
     for inv in invites:
-        inv["link"] = f"{scheme}://{request.host}/register?code={inv['code']}"
+        inv["link"] = absolute_url(f"/register?code={inv['code']}")
         inv["created_str"] = _fmt_ts(inv["created_at"])
         inv["expires_str"] = _fmt_ts(inv["expires_at"]) if inv["expires_at"] else "nu expiră"
     return render_template(
         "admin.html", user=g.user, users=users, invites=invites,
-        temp_password=temp_password,
+        temp_password=temp_password, friend_signup=friend_signup_enabled(),
     )
 
 
@@ -587,6 +631,15 @@ def _render_admin(temp_password=None):
 @admin_required
 def admin():
     return _render_admin()
+
+
+@bp.route("/admin/settings", methods=["POST"])
+@admin_required
+def admin_settings():
+    enabled = request.form.get("friend_link_signup") == "1"
+    db.set_setting("friend_link_signup", "1" if enabled else "0")
+    flash("Linkurile de prietenie " + ("pot" if enabled else "nu mai pot") + " crea conturi.", "ok")
+    return redirect(url_for("auth.admin") + "#settings")
 
 
 @bp.route("/admin/invites", methods=["POST"])

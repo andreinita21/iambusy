@@ -6,6 +6,7 @@
 
 {% block actions %}
 <a href="/" class="btn">Orar</a>
+<a href="/friends" class="btn">Prieteni</a>
 {% if user.is_admin %}<a href="/admin" class="btn">Admin</a>{% endif %}
 {% endblock %}
 
@@ -13,7 +14,8 @@
 <header class="panel-hero">
     <span class="tag tag-ink">Contul meu</span>
     <h1 class="panel-title">{{ user.display_name }}</h1>
-    <p class="panel-sub mono">@{{ user.username }}</p>
+    <p class="panel-sub mono" id="my-username">@{{ user.username }}</p>
+    <button type="button" class="btn btn-sm" data-copy="my-username">Copiază numele de utilizator</button>
     <form method="post" action="/logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-danger">Deconectează-mă</button>

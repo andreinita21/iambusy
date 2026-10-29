@@ -30,6 +30,9 @@
 | Data isolation | every query is scoped to the logged-in user id |
 | Browser hardening | strict Content-Security-Policy (no inline scripts), `X-Frame-Options: DENY`, `nosniff`, HSTS, `Cache-Control: no-store` |
 | On disk | `schedule.db`, `.secret_key` and `schedule_config.py` are mode `0600` and ignored by git |
+| Friends' calendars | only accepted friends can open them; everything they see goes through one masking layer (`calendar_data.py`), so "busy" blocks never carry a title, place, category or participant list, and overlapping busy blocks are merged |
+| Search | exact username only (no browsing), 40 lookups / 10 min per user; blocked users look like unknown ones |
+| Share links | 128-bit random token, revocable / regenerable; optional scrypt-hashed PIN limited to 5 tries / 15 min per visitor and 30 / hour per link; `noindex`; dates outside the link's window are never sent, not even to the status line |
 
 ```bash
 python3 accounts.py create-admin              # first administrator (asks for the password)
@@ -37,6 +40,18 @@ python3 accounts.py reset-password USERNAME   # forgot-password rescue, run on t
 python3 accounts.py import-schedule USERNAME /path/to/old/schedule.db
 python3 accounts.py list
 ```
+
+## 👥 Friends & sharing
+
+-   **Friends**: send a request by exact username (yours is on the Prieteni page with a copy button) or hand out a **friend link** (max uses, optional expiry). Whoever opens it becomes your friend in one click — and, if the admin allows it, can create an account straight from the link without an invite code.
+-   **Categories**: every activity has one of your own categories (Curs, Seminar, Laborator, Personal, Altele to start with — rename, recolour, add, delete). Existing activities were sorted into them from their `(C)` / `(S)` / `(L)` tag.
+-   **Who sees what** (`/privacy`): each category has a level for friends — **Complet** (title, place, time), **Doar ocupat** (a red "Ocupat" block, no details) or **Ascuns** (not shown at all, you look free). Override it for a **group** of friends (groups are private to you), for a single **friend**, or on a single **activity** in the editor. The most specific rule wins: activity → friend → groups → all friends → default (*Doar ocupat*); when two groups disagree, the more private level wins. "Vezi cum te vede" previews your calendar exactly as a given friend sees it.
+-   **Friends' calendars**: open a friend to get the same day view, week strip and month calendar as your own — filtered by what they allow you to see — and a live "liber / ocupat până la …" list on the Prieteni page.
+-   **Inviting friends**: add invitees to any activity. They answer from the Prieteni page or the editor and pick a category for it in *their* calendar, so their own rules decide what their friends see (that they're busy, at least). Only the organiser edits it; changes and cancellations reach everyone; anyone can leave. Participants see each other's RSVP.
+-   **One-off events and ranged activities**: an activity is either weekly (odd / even / both, optionally only between two dates) or happens once on a given date. The editor's **Calendar** tab shows real weeks and can overlay friends' busy blocks.
+-   **Common free time** (`/friends/free-time`): pick friends and a week to see where everyone is free (hidden activities count as free), then invite them to a slot in one click.
+-   **Public share links** (`/shares`): let anyone see your schedule without an account. Choose what they see (only busy / free, all details, or the same as your friends — adjustable per category), which days (any, from X to Y, the next N days, or hand-picked dates), until when the link works, an optional PIN and whether to show the live status. See how many times it was opened; disable, regenerate or delete it at any time.
+-   **Notifications**: the friends button in the top bar counts requests, invites and news (accepted, changed, cancelled …).
 
 ## ✨ Features
 
@@ -70,20 +85,30 @@ A full-featured management page (`/manage`) lets you take control of your schedu
 iambusy/
 ├── app.py                    # Flask HTTP layer + REST API, security headers
 ├── auth.py                   # Login, registration, sessions, CSRF, rate limits, admin
+├── social.py                 # Friends, groups, privacy rules, invites, friend links, free time
+├── sharing.py                # Public share links (no account needed)
+├── calendar_data.py          # A user's days as one viewer may see them (masking)
+├── visibility.py             # Full / busy / hidden rule precedence
 ├── accounts.py               # Command-line account maintenance
-├── db.py                     # SQLite layer (users, sessions, invites, activities)
-├── schedule_engine.py        # Business logic (week parity, timeline, status)
+├── db.py                     # SQLite layer (users, sessions, invites, categories, activities)
+├── db_social.py              # SQLite layer for the social features
+├── schedule_engine.py        # Business logic (recurrence, week parity, timeline, status)
+├── tests/                    # pytest suite (`.venv/bin/python -m pytest`)
 ├── setup.sh                  # One-command install / config / systemd service
 ├── schedule_config.example.py # Blank config template
 ├── schedule_config.py        # Your settings (created by setup.sh, not in git)
 ├── static/
 │   ├── style.css             # Neobrutalist design system (tokens, components)
 │   ├── schedule.js           # Live clock, month calendar, navigation, theme
-│   ├── manage.js             # Schedule management UI (grid, drag & drop, modals)
+│   ├── manage.js             # Schedule management UI (grid, drag & drop, modals, invites)
+│   ├── social.js             # Small helpers for the privacy / share pages
+│   ├── freetime.js           # Common free time finder
 │   ├── auth.js               # Password reveal / strength meter, copy buttons
 │   └── theme.js              # Applies the saved theme before first paint
 ├── templates/
-│   ├── index.html            # Daily schedule view
+│   ├── index.html            # Day view (own, friend's, preview, public share)
+│   ├── friends.html / privacy.html / shares.html / freetime.html / notifications.html
+│   ├── friend_link.html / share_pin.html / share_gone.html
 │   ├── manage.html           # Schedule management page
 │   ├── auth_base.html        # Shared layout of the account pages
 │   ├── login.html / register.html
@@ -156,6 +181,15 @@ git pull
 sudo systemctl restart iambusy-auth  # if you use the service
 ```
 
+### Tests
+
+```bash
+python3 -m venv --system-site-packages .venv && .venv/bin/pip install pytest
+.venv/bin/python -m pytest
+```
+
+The suite uses a throw-away database per test (`IAMBUSY_DB`) and never touches `schedule.db`.
+
 ### Development
 
 Set `DEBUG = True` in `schedule_config.py` and run `.venv/bin/python app.py` for auto-reload and the Flask debugger. Never do this on a host other people can reach.
@@ -172,6 +206,14 @@ All endpoints need a logged-in session and only ever touch the caller's own sche
 | `DELETE` | `/api/activities/<id>`   | Delete an activity                 |
 | `POST`   | `/api/conflicts`         | Check for time conflicts           |
 | `GET`    | `/api/days?from=&to=`    | Per-day summaries (max 62 days) for the month calendar |
+| `GET`    | `/api/manage/context`    | Categories, friends, groups and activities you were invited to |
+| `PUT`    | `/api/shared/<id>`       | Your category / visibility for an activity you were invited to |
+| `POST`   | `/api/shared/<id>/respond` · `/leave` | Accept / decline an invite, or leave |
+| `GET`    | `/api/friends/<username>/days?from=&to=` | A friend's days, as they let you see them |
+| `GET`    | `/api/busy?users=&from=&to=` | Busy intervals of you and friends + common free slots (max 14 days) |
+| `GET`    | `/s/<token>/days?from=&to=` | A share link's days (public; PIN-unlocked session if the link has a PIN) |
+
+Activities accept, besides `title` / `day` / `start_time` / `end_time` / `week_type`: `category_id`, `date` (one-off event; its weekday is derived), `valid_from` / `valid_until` (range of a weekly activity), `rules` (`[{subject_type: all|group|friend, subject_id, level: full|busy|hidden}]`) and `invitees` (friend user ids).
 
 ## 🛠️ Configuration
 

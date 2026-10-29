@@ -2,9 +2,10 @@
 IamBusy — Flask application entry point.
 
 Thin HTTP layer that delegates all schedule logic to :mod:`schedule_engine`
-and reads configuration from :mod:`schedule_config`.
+and :mod:`calendar_data`, and reads configuration from :mod:`schedule_config`.
 Backed by a SQLite database with one schedule per account; every page and
-API route requires a logged-in session (see :mod:`auth`).
+API route requires a logged-in session (see :mod:`auth`) except the public
+share links (see :mod:`sharing`).
 """
 
 import os
@@ -31,35 +32,27 @@ SHORT_SESSION_HOURS = getattr(config, "SHORT_SESSION_HOURS", 12)
 COOKIE_SECURE = getattr(config, "COOKIE_SECURE", False)
 TRUSTED_PROXIES = getattr(config, "TRUSTED_PROXIES", [])
 
-from schedule_engine import (
-    DAY_DISPLAY,
-    DAY_SHORT,
-    DAYS,
-    academic_week_number,
-    format_date_ro,
-    relative_day_ro,
-    build_day_timeline,
-    busy_segments,
-    compute_status,
-    day_summary,
-    find_next_activity,
-    free_windows,
-    is_odd_week,
-    prepare_blocks_for_ui,
-)
+from schedule_engine import DAY_DISPLAY, DAYS, find_conflicts, is_odd_week
 from db import (
     init_db,
-    get_schedule,
     get_all_activities,
     get_activity,
     add_activity,
     count_activities,
     delete_activity,
     update_activity,
-    find_conflicts,
+    get_category,
+    list_categories,
+)
+import db_social
+from visibility import DEFAULT_LEVEL
+from calendar_data import (
+    Calendar, Viewer, build_day_context, day_summaries, parse_range, parse_week1,
 )
 import auth
 from auth import login_required
+import social
+import sharing
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -80,6 +73,8 @@ auth.configure(
     trusted_proxies=TRUSTED_PROXIES,
     default_week1_start=DEFAULT_WEEK1_START,
 )
+social.configure(default_week1_start=DEFAULT_WEEK1_START)
+sharing.configure(default_week1_start=DEFAULT_WEEK1_START, cookie_secure=COOKIE_SECURE)
 
 # ── Initialise database on import ────────────────────────────
 init_db()
@@ -87,7 +82,18 @@ init_db()
 app.before_request(auth.load_current_user)
 app.before_request(auth.csrf_protect)
 app.register_blueprint(auth.bp)
+app.register_blueprint(social.bp)
+app.register_blueprint(sharing.bp)
 app.jinja_env.globals["csrf_token"] = auth.csrf_token
+
+
+@app.context_processor
+def inject_badge():
+    """Number on the friends button: requests, invites, unread news."""
+    def badge():
+        return db_social.badge_count(g.user["id"]) if g.get("user") else 0
+    return {"social_badge": badge}
+
 
 CSP = "; ".join([
     "default-src 'self'",
@@ -124,9 +130,11 @@ def harden_response(response):
 # ═════════════════════════════════════════════════ Validation ══
 
 TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 WEEK_TYPES = ("odd", "even", "both")
 TITLE_MAX = 120
 MAX_ACTIVITIES = 500  # per account
+MAX_INVITEES = 50
 
 
 def _json_body():
@@ -134,13 +142,44 @@ def _json_body():
     return data if isinstance(data, dict) else None
 
 
+def _clean_date(value):
+    """ISO date string → itself, ``None``/"" → ``None``, anything else → ``False``."""
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or not DATE_RE.match(value):
+        return False
+    try:
+        d = date.fromisoformat(value)
+    except ValueError:
+        return False
+    return value if 2000 <= d.year <= 2100 else False
+
+
 def _clean_activity(data, current=None):
     """Validate activity fields; missing ones fall back to *current*.
+
+    A ``date`` makes the activity a one-off event on that day (its weekday
+    and week type are derived); without it the activity repeats weekly,
+    optionally only between ``valid_from`` and ``valid_until``.
 
     Returns ``(fields, None)`` or ``(None, error message)``.
     """
     fields = {}
+    for name in ("date", "valid_from", "valid_until"):
+        value = data[name] if name in data else (current or {}).get(name)
+        cleaned = _clean_date(value)
+        if cleaned is False:
+            return None, "Dates must be YYYY-MM-DD"
+        fields[name] = cleaned
+
+    if fields["date"]:
+        fields["day"] = DAYS[date.fromisoformat(fields["date"]).weekday()]
+        fields["week_type"] = "both"
+        fields["valid_from"] = fields["valid_until"] = None
+
     for name in ("title", "day", "start_time", "end_time", "week_type"):
+        if name in fields:
+            continue
         value = data.get(name)
         if value is None and current is not None:
             value = current[name]
@@ -160,15 +199,53 @@ def _clean_activity(data, current=None):
         return None, "Times must be HH:MM"
     if fields["end_time"] <= fields["start_time"]:
         return None, "End time must be after start time"
+    if fields["valid_from"] and fields["valid_until"] and fields["valid_until"] < fields["valid_from"]:
+        return None, "The repeat range ends before it starts"
+
+    category_id = data.get("category_id", (current or {}).get("category_id"))
+    if category_id is not None:
+        if type(category_id) is not int or get_category(g.user["id"], category_id) is None:
+            return None, "Invalid category"
+    fields["category_id"] = category_id
     return fields, None
+
+
+def _clean_extras(data):
+    """Optional ``rules`` / ``invitees`` of an activity payload."""
+    rules = invitees = None
+    if "rules" in data:
+        rules = db_social.clean_rule_list(g.user["id"], data["rules"])
+        if rules is None:
+            return None, None, "Invalid visibility rules"
+    if "invitees" in data:
+        raw = data["invitees"]
+        if not isinstance(raw, list) or len(raw) > MAX_INVITEES or \
+                any(type(u) is not int for u in raw):
+            return None, None, "Invalid invitees"
+        invitees = raw
+    return rules, invitees, None
 
 
 def _week1_start() -> date:
     """First day of week 1 for the logged-in user."""
+    return parse_week1(g.user["week1_start"], DEFAULT_WEEK1_START)
+
+
+def _parse_view_date() -> date:
     try:
-        return date.fromisoformat(g.user["week1_start"])
-    except (TypeError, ValueError):
-        return DEFAULT_WEEK1_START
+        return datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
+    except ValueError:
+        return datetime.now().date()
+
+
+def _rules_json(rules: dict) -> list[dict]:
+    return [{"subject_type": st, "subject_id": sid, "level": lv}
+            for (st, sid), lv in sorted(rules.items())]
+
+
+def _conflict_json(act: dict) -> dict:
+    keys = ("id", "title", "day", "start_time", "end_time", "week_type", "date")
+    return {k: act.get(k) for k in keys}
 
 
 # ═══════════════════════════════════════════════════════ Pages ══
@@ -183,121 +260,16 @@ def index():
     date : str, optional
         ISO-format date (``YYYY-MM-DD``) to view.  Defaults to today.
     """
-    # ── resolve the target date ──────────────────────────────
-    date_str = request.args.get("date")
-    if date_str:
-        try:
-            view_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            view_date = datetime.now().date()
-    else:
-        view_date = datetime.now().date()
-
-    now = datetime.now()
-    today = now.date()
-    user_id = g.user["id"]
-    USER_NAME = g.user["display_name"]
-    ACADEMIC_WEEK1_START = _week1_start()
-
-    # ── schedule selection (from DB) ─────────────────────────
-    schedule_odd_db = get_schedule(user_id, "odd")
-    schedule_even_db = get_schedule(user_id, "even")
-
-    def schedule_for(d):
-        """Schedule dict for date *d* — empty before the academic year."""
-        if d < ACADEMIC_WEEK1_START:
-            return {}
-        return schedule_odd_db if is_odd_week(ACADEMIC_WEEK1_START, d) else schedule_even_db
-
-    week_is_odd = is_odd_week(ACADEMIC_WEEK1_START, view_date)
-    week_num = academic_week_number(ACADEMIC_WEEK1_START, view_date)
-    timeline = build_day_timeline(schedule_for(view_date), view_date)
-
-    # ── next-activity look-ahead ─────────────────────────────
-    next_act = find_next_activity(
-        schedule_odd_db, schedule_even_db, ACADEMIC_WEEK1_START, view_date,
+    cal = Calendar(g.user, DEFAULT_WEEK1_START)
+    context = build_day_context(cal, Viewer.owner(), _parse_view_date(), datetime.now(),
+                                name=g.user["display_name"])
+    context.update(
+        mode="own",
+        username=g.user["username"],
+        is_admin=bool(g.user["is_admin"]),
+        api_days="/api/days",
+        legend=[{"name": c["name"], "color": c["color"]} for c in cal.categories.values()],
     )
-
-    # ── status derivation ────────────────────────────────────
-    is_today = view_date == today
-    if is_today:
-        status_main, status_sub, current_block = compute_status(
-            now, timeline, USER_NAME, next_activity=next_act,
-        )
-    else:
-        n_courses = sum(1 for b in timeline if b["type"] == "course")
-        status_main = f"Program pentru {relative_day_ro(view_date, today)}"
-        if view_date.year != today.year:
-            status_main += f" {view_date.year}"
-        status_sub = (
-            "Nicio activitate programată." if n_courses == 0
-            else f"{n_courses} {'activitate' if n_courses == 1 else 'activități'}."
-        )
-        current_block = None
-
-    if current_block is None or not is_today:
-        state = "off"
-    elif current_block["type"] == "course":
-        state = "busy"
-    else:
-        state = "free"
-
-    # ── week label ───────────────────────────────────────────
-    if week_num <= 0:
-        week_label = f"Vacanță · începe pe {format_date_ro(ACADEMIC_WEEK1_START, long=True)}"
-    else:
-        week_label = f"Săptămâna {week_num} · {'impară' if week_is_odd else 'pară'}"
-
-    # ── week strip (Mon–Sun of the viewed week) ──────────────
-    monday = view_date - timedelta(days=view_date.weekday())
-    week_strip = []
-    for i in range(7):
-        d = monday + timedelta(days=i)
-        entries = schedule_for(d).get(DAYS[i], [])
-        week_strip.append({
-            "short": DAY_SHORT[i],
-            "day": d.day,
-            "count": len(entries),
-            "segments": busy_segments(entries),
-            "link": f"?date={d.isoformat()}",
-            "is_today": d == today,
-            "is_selected": d == view_date,
-            "is_weekend": i >= 5,
-            "label": f"{DAY_DISPLAY[DAYS[i]]}, {format_date_ro(d, long=True)}",
-        })
-
-    # ── template context ─────────────────────────────────────
-    blocks_for_ui = prepare_blocks_for_ui(timeline, current_block)
-    prev_date = view_date - timedelta(days=1)
-    next_date = view_date + timedelta(days=1)
-    n_courses = sum(1 for b in blocks_for_ui if b["type"] == "course")
-
-    context = {
-        "user_name": USER_NAME,
-        "username": g.user["username"],
-        "is_admin": bool(g.user["is_admin"]),
-        "state": state,
-        "is_today": is_today,
-        "has_courses": n_courses > 0,
-        "n_courses": n_courses,
-        "free_windows": free_windows(timeline),
-        "week_label": week_label,
-        "week_num": week_num,
-        "week_parity": "odd" if week_is_odd else "even",
-        "day_key": DAYS[view_date.weekday()],
-        "today_label": DAY_DISPLAY[DAYS[view_date.weekday()]],
-        "view_date_str": format_date_ro(view_date, long=True),
-        "view_date_iso": view_date.strftime("%Y-%m-%d"),
-        "today_iso": today.strftime("%Y-%m-%d"),
-        "now": now.strftime("%H:%M:%S"),
-        "status_main": status_main,
-        "status_sub": status_sub,
-        "current_end_iso": current_block["end_dt"].isoformat() if (current_block and is_today) else "",
-        "blocks": blocks_for_ui,
-        "week_strip": week_strip,
-        "prev_link": f"?date={prev_date.strftime('%Y-%m-%d')}",
-        "next_link": f"?date={next_date.strftime('%Y-%m-%d')}",
-    }
     return render_template("index.html", context=context)
 
 
@@ -306,16 +278,20 @@ def index():
 def manage():
     """Render the schedule management page.
 
-    Optional query parameters (``day``, ``start``, ``end``, ``week``) are
-    read client-side to pre-fill the "add activity" form — this is how the
-    daily view's "schedule something in this gap" links work.
+    Optional query parameters (``day``, ``start``, ``end``, ``week``,
+    ``date``, ``invite``) are read client-side to pre-fill the "add
+    activity" form — this is how the daily view's "schedule something in
+    this gap" links and the free-time finder's "invite" buttons work.
     """
-    week_key = "odd" if is_odd_week(_week1_start(), datetime.now().date()) else "even"
+    today = datetime.now().date()
+    week_key = "odd" if is_odd_week(_week1_start(), today) else "even"
     return render_template(
         "manage.html",
         days=DAYS,
         day_display=DAY_DISPLAY,
         current_week=week_key,
+        today=today.isoformat(),
+        week1_start=_week1_start().isoformat(),
         user_name=g.user["display_name"],
     )
 
@@ -332,41 +308,69 @@ def api_days():
     from, to : str
         ISO dates.  The range is capped at 62 days.
     """
-    try:
-        start = datetime.strptime(request.args.get("from", ""), "%Y-%m-%d").date()
-        end = datetime.strptime(request.args.get("to", ""), "%Y-%m-%d").date()
-    except ValueError:
-        return jsonify({"error": "from/to must be YYYY-MM-DD"}), 400
-    if end < start:
-        return jsonify({"error": "to must be after from"}), 400
-    if (end - start).days > 62:
-        return jsonify({"error": "Range too large (max 62 days)"}), 400
-
-    ACADEMIC_WEEK1_START = _week1_start()
-    schedule_odd_db = get_schedule(g.user["id"], "odd")
-    schedule_even_db = get_schedule(g.user["id"], "even")
-
-    days = []
-    d = start
-    while d <= end:
-        if d < ACADEMIC_WEEK1_START:
-            schedule = {}
-        else:
-            schedule = schedule_odd_db if is_odd_week(ACADEMIC_WEEK1_START, d) else schedule_even_db
-        days.append(day_summary(schedule, d, ACADEMIC_WEEK1_START))
-        d += timedelta(days=1)
-
+    start, end, error = parse_range(request.args)
+    if error:
+        return jsonify({"error": error}), 400
+    cal = Calendar(g.user, DEFAULT_WEEK1_START)
     return jsonify({
         "today": datetime.now().date().isoformat(),
-        "academic_start": ACADEMIC_WEEK1_START.isoformat(),
-        "days": days,
+        "academic_start": cal.week1.isoformat(),
+        "days": day_summaries(cal, Viewer.owner(), start, end),
     })
+
 
 @app.route("/api/activities", methods=["GET"])
 @login_required
 def api_list_activities():
-    """Return all activities of the logged-in user as JSON."""
-    return jsonify(get_all_activities(g.user["id"]))
+    """Return all activities the logged-in user owns as JSON."""
+    user_id = g.user["id"]
+    acts = get_all_activities(user_id)
+    rules = db_social.activity_rules(user_id, (a["id"] for a in acts))
+    people = db_social.participants(a["id"] for a in acts)
+    for a in acts:
+        a.pop("user_id", None)
+        a["rules"] = _rules_json(rules.get(a["id"], {}))
+        a["participants"] = people.get(a["id"], [])
+    return jsonify(acts)
+
+
+@app.route("/api/manage/context", methods=["GET"])
+@login_required
+def api_manage_context():
+    """Everything the editor needs besides the activities themselves."""
+    user_id = g.user["id"]
+    shared = db_social.shared_activities(user_id)
+    rules = db_social.activity_rules(user_id, (s["id"] for s in shared))
+    people = db_social.participants(s["id"] for s in shared)
+    for s in shared:
+        s["rules"] = _rules_json(rules.get(s["id"], {}))
+        s["participants"] = people.get(s["id"], [])
+        for key in ("owner_category_id", "invited_at"):
+            s.pop(key, None)
+    cat_rules = db_social.category_rules(user_id)
+    categories = list_categories(user_id)
+    for c in categories:
+        c["friends_level"] = cat_rules.get(c["id"], {}).get(("all", 0)) or DEFAULT_LEVEL
+    return jsonify({
+        "categories": categories,
+        "friends": [{k: f[k] for k in ("id", "username", "display_name")}
+                    for f in db_social.list_friends(user_id)],
+        "groups": [{k: gr[k] for k in ("id", "name", "color")}
+                   for gr in db_social.list_groups(user_id)],
+        "shared": shared,
+        "week1_start": _week1_start().isoformat(),
+        "today": datetime.now().date().isoformat(),
+    })
+
+
+def _apply_extras(activity_id: int, rules, invitees) -> None:
+    # New invitees need no notification: pending invites are listed (and
+    # counted in the badge) straight from the participants table.
+    user_id = g.user["id"]
+    if rules is not None:
+        db_social.set_activity_rules(user_id, activity_id, rules)
+    if invitees is not None:
+        db_social.set_invitees(user_id, activity_id, invitees)
 
 
 @app.route("/api/activities", methods=["POST"])
@@ -379,19 +383,23 @@ def api_add_activity():
     fields, error = _clean_activity(data)
     if error:
         return jsonify({"error": error}), 400
+    rules, invitees, error = _clean_extras(data)
+    if error:
+        return jsonify({"error": error}), 400
 
     user_id = g.user["id"]
     if count_activities(user_id) >= MAX_ACTIVITIES:
         return jsonify({"error": f"Limit of {MAX_ACTIVITIES} activities reached"}), 400
 
-    # Check conflicts
-    conflicts = find_conflicts(
-        user_id, fields["day"], fields["start_time"], fields["end_time"], fields["week_type"],
-    )
+    conflicts = find_conflicts(fields, get_all_activities(user_id), _week1_start())
     if conflicts and data.get("force") is not True:
-        return jsonify({"conflicts": conflicts, "needs_resolution": True}), 409
+        return jsonify({"conflicts": [_conflict_json(c) for c in conflicts],
+                        "needs_resolution": True}), 409
 
-    new_id = add_activity(user_id, **fields)
+    new_id = add_activity(user_id, fields.pop("title"), fields.pop("day"),
+                          fields.pop("start_time"), fields.pop("end_time"),
+                          fields.pop("week_type"), **fields)
+    _apply_extras(new_id, rules, invitees)
     return jsonify({"id": new_id, "success": True}), 201
 
 
@@ -412,16 +420,28 @@ def api_update_activity(activity_id):
     fields, error = _clean_activity(data, current=current)
     if error:
         return jsonify({"error": error}), 400
+    rules, invitees, error = _clean_extras(data)
+    if error:
+        return jsonify({"error": error}), 400
 
-    # Check conflicts (exclude self)
-    conflicts = find_conflicts(
-        user_id, fields["day"], fields["start_time"], fields["end_time"],
-        fields["week_type"], exclude_id=activity_id,
-    )
+    conflicts = find_conflicts(fields, get_all_activities(user_id), _week1_start(),
+                               exclude_id=activity_id)
     if conflicts and data.get("force") is not True:
-        return jsonify({"conflicts": conflicts, "needs_resolution": True}), 409
+        return jsonify({"conflicts": [_conflict_json(c) for c in conflicts],
+                        "needs_resolution": True}), 409
 
-    update_activity(user_id, activity_id, **fields)
+    update_activity(user_id, activity_id, fields.pop("title"), fields.pop("day"),
+                    fields.pop("start_time"), fields.pop("end_time"), fields.pop("week_type"),
+                    **fields)
+    _apply_extras(activity_id, rules, invitees)
+
+    when = ("title", "day", "start_time", "end_time", "week_type", "date", "valid_from",
+            "valid_until")
+    updated = get_activity(user_id, activity_id)
+    if any(updated[k] != current[k] for k in when):
+        people = db_social.participants([activity_id]).get(activity_id, [])
+        db_social.notify([p["user_id"] for p in people if p["status"] != "declined"],
+                         "activity_changed", user_id, activity_id, updated["title"])
     return jsonify({"success": True})
 
 
@@ -429,7 +449,12 @@ def api_update_activity(activity_id):
 @login_required
 def api_delete_activity(activity_id):
     """Delete an activity by id."""
-    if delete_activity(g.user["id"], activity_id):
+    user_id = g.user["id"]
+    current = get_activity(user_id, activity_id)
+    people = db_social.participants([activity_id]).get(activity_id, [])
+    if current and delete_activity(user_id, activity_id):
+        db_social.notify([p["user_id"] for p in people if p["status"] != "declined"],
+                         "activity_cancelled", user_id, None, current["title"])
         return jsonify({"success": True})
     return jsonify({"error": "Activity not found"}), 404
 
@@ -448,11 +473,58 @@ def api_check_conflicts():
     if error:
         return jsonify({"error": error}), 400
 
-    conflicts = find_conflicts(
-        g.user["id"], fields["day"], fields["start_time"], fields["end_time"],
-        fields["week_type"], exclude_id=exclude_id,
-    )
-    return jsonify({"conflicts": conflicts})
+    conflicts = find_conflicts(fields, get_all_activities(g.user["id"]), _week1_start(),
+                               exclude_id=exclude_id)
+    return jsonify({"conflicts": [_conflict_json(c) for c in conflicts]})
+
+
+# ── Activities other people invited me to ────────────────────
+
+@app.route("/api/shared/<int:activity_id>", methods=["PUT"])
+@login_required
+def api_update_shared(activity_id):
+    """My category and my visibility rules for an activity I was invited to."""
+    data = _json_body()
+    if data is None:
+        return jsonify({"error": "Invalid JSON body"}), 400
+    user_id = g.user["id"]
+    if db_social.get_participation(user_id, activity_id) is None:
+        return jsonify({"error": "Activity not found"}), 404
+    if "category_id" in data:
+        if type(data["category_id"]) is not int or \
+                not db_social.set_participant_category(user_id, activity_id, data["category_id"]):
+            return jsonify({"error": "Invalid category"}), 400
+    if "rules" in data:
+        rules = db_social.clean_rule_list(user_id, data["rules"])
+        if rules is None:
+            return jsonify({"error": "Invalid visibility rules"}), 400
+        db_social.set_activity_rules(user_id, activity_id, rules)
+    return jsonify({"success": True})
+
+
+@app.route("/api/shared/<int:activity_id>/respond", methods=["POST"])
+@login_required
+def api_respond_shared(activity_id):
+    data = _json_body()
+    if data is None or type(data.get("accept")) is not bool:
+        return jsonify({"error": "Invalid JSON body"}), 400
+    category_id = data.get("category_id")
+    if category_id is not None and type(category_id) is not int:
+        return jsonify({"error": "Invalid category"}), 400
+    if db_social.respond_invite(g.user["id"], activity_id, data["accept"], category_id) is None:
+        return jsonify({"error": "Activity not found"}), 404
+    return jsonify({"success": True})
+
+
+@app.route("/api/shared/<int:activity_id>/leave", methods=["POST"])
+@login_required
+def api_leave_shared(activity_id):
+    act = db_social.get_participation(g.user["id"], activity_id)
+    if act is None:
+        return jsonify({"error": "Activity not found"}), 404
+    db_social.respond_invite(g.user["id"], activity_id, accept=False)
+    db_social.set_activity_rules(g.user["id"], activity_id, [])
+    return jsonify({"success": True})
 
 
 if __name__ == "__main__":

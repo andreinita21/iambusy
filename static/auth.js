@@ -102,8 +102,8 @@
             btn.hidden = false;
             btn.addEventListener('click', () => {
                 navigator.share({
-                    title: 'Invitație IamBusy',
-                    text: 'Creează-ți contul IamBusy:',
+                    title: btn.dataset.shareTitle || 'Invitație IamBusy',
+                    text: btn.dataset.shareText || 'Creează-ți contul IamBusy:',
                     url: source.textContent.trim(),
                 }).catch(() => { });
             });

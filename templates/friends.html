@@ -1,0 +1,294 @@
+{% extends "auth_base.html" %}
+{% block title %}Prieteni{% endblock %}
+{% block body_class %}panel-page{% endblock %}
+{% block shell_class %}panel-shell panel-wide{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block actions %}
+<a href="/" class="btn">Orar</a>
+<a href="/privacy" class="btn hide-narrow">Confidențialitate</a>
+{% endblock %}
+
+{% block content %}
+<header class="panel-hero panel-hero-cyan">
+    <span class="tag tag-ink">Prieteni</span>
+    <h1 class="panel-title">{{ user.display_name }}</h1>
+    <div class="username-card">
+        <span class="hint-ink">Numele tău de utilizator — dă-l prietenilor ca să te găsească:</span>
+        <span class="username-big mono" id="my-username">@{{ user.username }}</span>
+        <div class="row-actions">
+            <button type="button" class="btn btn-sm" data-copy="my-username">Copiază</button>
+            <a class="btn btn-sm" href="#links">Link de prietenie</a>
+        </div>
+    </div>
+    <nav class="hero-links" aria-label="Scurtături">
+        <a class="btn btn-sm" href="/privacy">Cine ce vede</a>
+        <a class="btn btn-sm" href="/friends/free-time">Timp liber comun</a>
+        <a class="btn btn-sm" href="/shares">Linkuri publice</a>
+    </nav>
+</header>
+
+{# ── Inbox: things waiting for an answer, then news ────────────── #}
+{% if incoming or invites or notifications %}
+<section class="panel-card" id="inbox" aria-labelledby="inbox-title">
+    <div class="panel-card-head">
+        <h2 class="panel-card-title" id="inbox-title">Noutăți</h2>
+        <a class="btn btn-sm" href="/notifications">Toate notificările</a>
+    </div>
+
+    {% if incoming %}
+    <ul class="rows">
+        {% for r in incoming %}
+        <li class="row row-request">
+            <div class="row-main">
+                <b>{{ r.display_name }}</b> <span class="mono">@{{ r.username }}</span>
+                <span class="tag tag-yellow">vrea să fiți prieteni</span>
+            </div>
+            <div class="row-actions">
+                <form method="post" action="/friends/{{ r.id }}/accept">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-accent">Acceptă</button>
+                </form>
+                <form method="post" action="/friends/{{ r.id }}/remove">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm">Refuză</button>
+                </form>
+                <form method="post" action="/friends/{{ r.id }}/block">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-ghost">Blochează</button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if invites %}
+    <ul class="rows">
+        {% for inv in invites %}
+        <li class="row row-invite">
+            <div class="row-main">
+                <span class="tag tag-pink">invitație</span>
+                <b>{{ inv.title }}</b>
+                <span class="row-meta">de la <b>{{ inv.owner_name }}</b> · {{ inv.when }}</span>
+                {% if inv.participants %}
+                <span class="row-meta">
+                    {% for p in inv.participants %}{{ 'tu' if p.user_id == user.id else p.display_name }} <i class="rsvp rsvp-{{ p.status }}">{{ {'accepted': 'vine', 'pending': 'nu a răspuns', 'declined': 'nu vine'}[p.status] }}</i>{% if not loop.last %}, {% endif %}{% endfor %}
+                </span>
+                {% endif %}
+                {% if inv.conflicts %}
+                <span class="row-warn">⚠ Se suprapune cu: {{ inv.conflicts | join(', ') }}</span>
+                {% endif %}
+            </div>
+            <form class="invite-answer" method="post" action="/invites/{{ inv.id }}/respond">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label class="sr-only" for="cat-{{ inv.id }}">Categoria în calendarul tău</label>
+                <div class="select-wrap">
+                    <select class="select select-sm" id="cat-{{ inv.id }}" name="category_id"
+                        title="În ce categorie o pui — decide ce văd prietenii tăi">
+                        {% for c in categories %}
+                        <option value="{{ c.id }}" {% if c.id == inv.suggested_category %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" name="accept" value="1" class="btn btn-sm btn-accent">Vin</button>
+                <button type="submit" name="accept" value="0" class="btn btn-sm">Nu pot</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    <p class="hint">Când accepți, activitatea apare în calendarul tău, iar prietenii tăi o văd după regulile
+        categoriei alese — așa știu că ești ocupat.</p>
+    {% endif %}
+
+    {% if notifications %}
+    <ul class="news">
+        {% for n in notifications %}
+        <li class="{{ 'unread' if n.unread }}"><span>{{ n.message }}</span><small class="mono">{{ n.when }}</small></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+{% endif %}
+
+{# ── Add a friend ─────────────────────────────────────────────── #}
+<section class="panel-card" id="add" aria-labelledby="add-title">
+    <h2 class="panel-card-title" id="add-title">Adaugă un prieten</h2>
+    <form class="search-form" method="get" action="/friends#add" role="search">
+        <div class="field field-grow">
+            <label for="u">Numele de utilizator exact</label>
+            <input class="input" type="search" id="u" name="u" value="{{ query }}" placeholder="ex. ana.pop"
+                autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Caută</button>
+    </form>
+    <p class="hint">Căutarea găsește doar numele exact — nu se pot răsfoi conturile.</p>
+
+    {% if result %}
+    {% if result.missing %}
+    <p class="result-empty">Nu există niciun cont <b class="mono">@{{ query }}</b>.</p>
+    {% elif result.self %}
+    <p class="result-empty">Acesta ești tu. 🙂</p>
+    {% else %}
+    <div class="row row-user">
+        <div class="row-main">
+            <b>{{ result.display_name }}</b> <span class="mono">@{{ result.username }}</span>
+            {% if result.relation == 'friends' %}<span class="tag tag-lime">prieteni</span>
+            {% elif result.relation == 'outgoing' %}<span class="tag">cerere trimisă</span>
+            {% elif result.relation == 'incoming' %}<span class="tag tag-yellow">ți-a trimis o cerere</span>{% endif %}
+        </div>
+        <div class="row-actions">
+            {% if result.relation == 'none' %}
+            <form method="post" action="/friends/request">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="username" value="{{ result.username }}">
+                <button type="submit" class="btn btn-sm btn-accent">Trimite cerere</button>
+            </form>
+            {% elif result.relation == 'incoming' %}
+            <form method="post" action="/friends/{{ result.id }}/accept">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-accent">Acceptă</button>
+            </form>
+            {% elif result.relation == 'friends' %}
+            <a class="btn btn-sm" href="/friends/{{ result.username }}">Vezi programul</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+</section>
+
+{# ── Friends ──────────────────────────────────────────────────── #}
+<section class="panel-card" id="list" aria-labelledby="friends-title">
+    <div class="panel-card-head">
+        <h2 class="panel-card-title" id="friends-title">Prietenii tăi <span class="count">{{ friends | length }}</span></h2>
+        {% if friends %}<a class="btn btn-sm" href="/friends/free-time">Când suntem liberi?</a>{% endif %}
+    </div>
+    {% if friends %}
+    <ul class="rows">
+        {% for f in friends %}
+        <li class="row friend-row state-{{ f.status.state }}">
+            <div class="row-main">
+                <span class="presence" aria-hidden="true"></span>
+                <a class="friend-name" href="/friends/{{ f.username }}"><b>{{ f.display_name }}</b></a>
+                <span class="mono">@{{ f.username }}</span>
+                {% for gr in f.groups %}<span class="chip sw-{{ gr.color }}">{{ gr.name }}</span>{% endfor %}
+                <span class="row-meta friend-status">{{ f.status.main }}</span>
+            </div>
+            <div class="row-actions">
+                <a class="btn btn-sm btn-primary" href="/friends/{{ f.username }}">Program</a>
+                <a class="btn btn-sm" href="/privacy?for=f{{ f.id }}" title="Ce vede {{ f.display_name }} din programul tău">Ce vede</a>
+                <a class="btn btn-sm" href="/preview/{{ f.username }}" title="Programul tău, așa cum îl vede {{ f.display_name }}">Previzualizează</a>
+                <details class="danger-zone">
+                    <summary class="btn btn-sm btn-ghost">Mai mult…</summary>
+                    <div class="danger-form">
+                        <form method="post" action="/friends/{{ f.id }}/remove">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Elimină din prieteni</button>
+                        </form>
+                        <form method="post" action="/friends/{{ f.id }}/block">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm">Blochează</button>
+                        </form>
+                        <span class="hint">Eliminarea șterge și invitațiile dintre voi și regulile pentru {{ f.display_name }}.</span>
+                    </div>
+                </details>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint">Niciun prieten încă. Caută-i după numele de utilizator sau trimite-le linkul tău de prietenie.</p>
+    {% endif %}
+
+    {% if outgoing %}
+    <h3 class="sub-title">Cereri trimise</h3>
+    <ul class="rows">
+        {% for r in outgoing %}
+        <li class="row row-off">
+            <div class="row-main"><b>{{ r.display_name }}</b> <span class="mono">@{{ r.username }}</span><span class="tag">în așteptare</span></div>
+            <form method="post" action="/friends/{{ r.id }}/remove">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm">Anulează</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+
+{# ── Friend links ─────────────────────────────────────────────── #}
+<section class="panel-card" id="links" aria-labelledby="links-title">
+    <h2 class="panel-card-title" id="links-title">Linkuri de prietenie</h2>
+    <p class="hint">Cine deschide linkul devine prietenul tău dintr-un click.
+        {% if signup_via_links %}Dacă nu are cont, și-l poate crea direct din link — fără cod de invitație.
+        {% else %}Cine nu are cont are nevoie întâi de o invitație de la administrator.{% endif %}</p>
+    <form class="auth-form invite-form" method="post" action="/friends/links">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field field-grow">
+            <label for="note">Pentru cine</label>
+            <input class="input" type="text" id="note" name="note" maxlength="60" placeholder="ex. grupa 321">
+        </div>
+        <div class="field">
+            <label for="max_uses">Utilizări</label>
+            <input class="input" type="number" id="max_uses" name="max_uses" value="1" min="1" max="100" required>
+        </div>
+        <div class="field">
+            <label for="days">Expiră în (zile)</label>
+            <input class="input" type="number" id="days" name="days" value="7" min="0" max="365" required>
+            <span class="hint">0 = nu expiră</span>
+        </div>
+        <button type="submit" class="btn btn-accent">Creează link</button>
+    </form>
+
+    {% if links %}
+    <ul class="rows">
+        {% for l in links %}
+        <li class="row{{ ' row-off' if l.status != 'active' }}">
+            <div class="row-main">
+                {% if l.note %}<b>{{ l.note }}</b>{% endif %}
+                <span class="tag {{ 'tag-lime' if l.status == 'active' else '' }}">
+                    {{ {'active': 'activ', 'used': 'folosit', 'expired': 'expirat', 'revoked': 'dezactivat'}[l.status] }}
+                </span>
+                <span class="row-meta mono">{{ l.uses }}/{{ l.max_uses }} utilizări · {{ l.expires_str }}</span>
+                {% if l.status == 'active' %}<span class="invite-link mono" id="flink-{{ l.id }}">{{ l.url }}</span>{% endif %}
+            </div>
+            <div class="row-actions">
+                {% if l.status == 'active' %}
+                <button type="button" class="btn btn-sm btn-primary" data-copy="flink-{{ l.id }}">Copiază</button>
+                <button type="button" class="btn btn-sm" data-share="flink-{{ l.id }}" data-share-title="Hai pe IamBusy"
+                    data-share-text="Fii prietenul meu pe IamBusy:" hidden>Trimite…</button>
+                <form method="post" action="/friends/links/{{ l.id }}/revoke">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Dezactivează</button>
+                </form>
+                {% else %}
+                <form method="post" action="/friends/links/{{ l.id }}/delete">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm">Șterge</button>
+                </form>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+
+{% if blocked %}
+<section class="panel-card" id="blocked" aria-labelledby="blocked-title">
+    <h2 class="panel-card-title" id="blocked-title">Blocați</h2>
+    <ul class="rows">
+        {% for b in blocked %}
+        <li class="row row-off">
+            <div class="row-main"><b>{{ b.display_name }}</b> <span class="mono">@{{ b.username }}</span></div>
+            <form method="post" action="/friends/blocked/{{ b.id }}/unblock">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm">Deblochează</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+{% endblock %}

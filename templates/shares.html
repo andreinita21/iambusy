@@ -1,0 +1,191 @@
+{% extends "auth_base.html" %}
+{% block title %}Linkuri publice{% endblock %}
+{% block body_class %}panel-page{% endblock %}
+{% block shell_class %}panel-shell panel-wide{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block actions %}
+<a href="/" class="btn">Orar</a>
+<a href="/friends" class="btn">Prieteni</a>
+{% endblock %}
+
+{% block content %}
+{% set e = editing %}
+<header class="panel-hero panel-hero-lime">
+    <span class="tag tag-ink">Linkuri publice</span>
+    <h1 class="panel-title">Partajează-ți programul</h1>
+    <p class="panel-sub">Oricine are linkul îl poate deschide, fără cont. Alegi tu ce vede, pentru ce zile
+        și până când — și îl poți opri oricând.</p>
+</header>
+
+{% if links and not e %}
+<section class="panel-card" aria-labelledby="links-title">
+    <div class="panel-card-head">
+        <h2 class="panel-card-title" id="links-title">Linkurile tale</h2>
+        <a class="btn btn-sm btn-accent" href="#new">Link nou</a>
+    </div>
+    <ul class="rows">
+        {% for l in links %}
+        <li class="row share-row{{ ' row-off' if l.state != 'ok' }}">
+            <div class="row-main">
+                <b>{{ l.label or 'Fără nume' }}</b>
+                <span class="tag {{ 'tag-lime' if l.state == 'ok' }}">{{ {'ok': 'activ', 'revoked': 'dezactivat', 'expired': 'expirat'}[l.state] }}</span>
+                <span class="tag">{{ l.preset_label }}{% if l.tweaks %} · {{ l.tweaks }} ajustări{% endif %}</span>
+                {% if l.has_pin %}<span class="tag tag-yellow">PIN</span>{% endif %}
+                {% if not l.show_status %}<span class="tag">fără status live</span>{% endif %}
+                <span class="row-meta">Zile: {{ l.window_desc }} · expiră: {{ l.expires_str }}</span>
+                <span class="row-meta mono">{{ l.views }} deschideri · ultima: {{ l.last_viewed_str }}</span>
+                {% if l.state == 'ok' %}<span class="invite-link mono" id="share-{{ l.id }}">{{ l.url }}</span>{% endif %}
+            </div>
+            <div class="row-actions">
+                {% if l.state == 'ok' %}
+                <button type="button" class="btn btn-sm btn-primary" data-copy="share-{{ l.id }}">Copiază</button>
+                <button type="button" class="btn btn-sm" data-share="share-{{ l.id }}" data-share-title="Programul meu"
+                    data-share-text="Uite când sunt liber:" hidden>Trimite…</button>
+                <a class="btn btn-sm" href="{{ l.url }}" target="_blank" rel="noopener">Deschide</a>
+                {% endif %}
+                <a class="btn btn-sm" href="/shares?edit={{ l.id }}#new">Editează</a>
+                <form method="post" action="/shares/{{ l.id }}/toggle">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm">{{ 'Reactivează' if l.revoked else 'Dezactivează' }}</button>
+                </form>
+                <details class="danger-zone">
+                    <summary class="btn btn-sm btn-ghost">Mai mult…</summary>
+                    <div class="danger-form">
+                        <form method="post" action="/shares/{{ l.id }}/regenerate">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm">Generează alt link</button>
+                        </form>
+                        <span class="hint">Vechiul link nu mai merge; setările rămân.</span>
+                        <form method="post" action="/shares/{{ l.id }}/delete">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Șterge definitiv</button>
+                        </form>
+                    </div>
+                </details>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+<section class="panel-card" id="new" aria-labelledby="new-title">
+    <div class="panel-card-head">
+        <h2 class="panel-card-title" id="new-title">{{ 'Editează linkul' if e else 'Link nou' }}</h2>
+        {% if e %}<a class="btn btn-sm" href="/shares">Renunță</a>{% endif %}
+    </div>
+    <form class="auth-form share-form" method="post" action="{{ '/shares/' ~ e.id if e else '/shares' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="field">
+            <label for="label">Nume (doar pentru tine — apare și pe pagina partajată)</label>
+            <input class="input" type="text" id="label" name="label" maxlength="60" value="{{ e.label if e else '' }}"
+                placeholder="ex. Pentru proiectul de grup">
+        </div>
+
+        <fieldset class="fieldset">
+            <legend>Ce se vede</legend>
+            <div class="option-cards" role="radiogroup">
+                {% for key, label in presets.items() %}
+                <label class="option-card">
+                    <input type="radio" name="preset" value="{{ key }}" {% if (e and e.preset == key) or (not e and key == 'busy') %}checked{% endif %}>
+                    <span><b>{{ label }}</b>
+                        <small>{{ {'busy': 'Doar blocuri roșii „Ocupat” — fără titluri.', 'full': 'Titluri, locuri și ore pentru tot ce nu e ascuns.', 'friends': 'Exact ce vede un prieten fără reguli speciale.'}[key] }}</small></span>
+                </label>
+                {% endfor %}
+            </div>
+            <details class="tweaks" {% if e and e.rules %}open{% endif %}>
+                <summary>Ajustează pe categorii</summary>
+                <ul class="rule-rows">
+                    {% for c in categories %}
+                    <li class="rule-row">
+                        <div class="rule-cat"><span class="dot sw-{{ c.color }}"></span><b>{{ c.name }}</b></div>
+                        <div class="select-wrap">
+                            <label class="sr-only" for="lv-{{ c.id }}">Nivel pentru {{ c.name }}</label>
+                            <select class="select select-sm" id="lv-{{ c.id }}" name="level-{{ c.id }}">
+                                <option value="">După presetare</option>
+                                {% for lv in levels %}
+                                <option value="{{ lv }}" {% if e and e.rules.get(c.id) == lv %}selected{% endif %}>{{ level_labels[lv] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <p class="hint">Activitățile pe care le-ai setat „Ascuns” sau „Doar ocupat” pentru toți prietenii rămân
+                    cel puțin la fel de private și aici.</p>
+            </details>
+        </fieldset>
+
+        <fieldset class="fieldset">
+            <legend>Ce zile</legend>
+            <div class="choice choice-4" role="radiogroup">
+                {% for key, label in window_types.items() %}
+                <label><input type="radio" name="window_type" value="{{ key }}" {% if (e and e.window_type == key) or (not e and key == 'unlimited') %}checked{% endif %}><span>{{ label }}</span>{{ label }}</label>
+                {% endfor %}
+            </div>
+            <div class="row-2" data-show-if="window_type=range">
+                <div class="field">
+                    <label for="range_from">De la</label>
+                    <input class="input" type="date" id="range_from" name="range_from" value="{{ e.range_from if e and e.range_from else today }}">
+                </div>
+                <div class="field">
+                    <label for="range_to">Până la (inclusiv)</label>
+                    <input class="input" type="date" id="range_to" name="range_to" value="{{ e.range_to if e and e.range_to else '' }}">
+                </div>
+            </div>
+            <div class="field" data-show-if="window_type=rolling">
+                <label for="rolling_days">Câte zile, începând cu ziua în care e deschis</label>
+                <input class="input" type="number" id="rolling_days" name="rolling_days" min="1" max="365"
+                    value="{{ e.rolling_days if e and e.rolling_days else 14 }}">
+                <span class="hint">Se mută singur: mâine va arăta tot următoarele N zile.</span>
+            </div>
+            <div class="field" data-show-if="window_type=days">
+                <label for="days_list">Zilele</label>
+                <div class="day-picker" data-day-picker="days_list">
+                    <input class="input" type="date" aria-label="Adaugă o zi" data-day-input>
+                    <button type="button" class="btn btn-sm" data-day-add>Adaugă ziua</button>
+                    <div class="chips" data-day-chips></div>
+                </div>
+                <input class="input" type="text" id="days_list" name="days_list"
+                    value="{{ e.days | join(', ') if e else '' }}" placeholder="2026-11-05, 2026-11-12">
+                <span class="hint">Date în format AAAA-LL-ZZ, separate prin virgulă (max 90).</span>
+            </div>
+        </fieldset>
+
+        <fieldset class="fieldset">
+            <legend>Cât timp funcționează linkul</legend>
+            <div class="choice choice-2" role="radiogroup">
+                <label><input type="radio" name="expires" value="never" {% if not e or not e.expires_at %}checked{% endif %}><span>Nu expiră</span>Nu expiră</label>
+                <label><input type="radio" name="expires" value="at" {% if e and e.expires_at %}checked{% endif %}><span>Expiră pe…</span>Expiră pe…</label>
+            </div>
+            <div class="field" data-show-if="expires=at">
+                <label for="expires_at">Data și ora</label>
+                <input class="input" type="datetime-local" id="expires_at" name="expires_at" value="{{ e.expires_local if e else '' }}">
+            </div>
+        </fieldset>
+
+        <div class="row-2">
+            <div class="field">
+                <label for="pin">PIN (opțional)</label>
+                <input class="input" type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]{4,8}"
+                    maxlength="8" autocomplete="new-password" placeholder="{{ 'neschimbat' if e and e.has_pin else '4–8 cifre' }}">
+                <span class="hint">Trimite PIN-ul separat de link.</span>
+                {% if e and e.has_pin %}
+                <label class="check"><input type="checkbox" name="clear_pin" value="1"><span class="check-box"></span><span class="check-text">Scoate PIN-ul</span></label>
+                {% endif %}
+            </div>
+            <div class="field">
+                <span class="field-label">Status live</span>
+                <label class="check"><input type="checkbox" name="show_status" value="1" {% if not e or e.show_status %}checked{% endif %}><span class="check-box"></span>
+                    <span class="check-text">Arată ceasul și „e liber / are ceva programat până la…”</span></label>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">{{ 'Salvează modificările' if e else 'Creează linkul' }}</button>
+    </form>
+</section>
+{% endblock %}
+
+{% block scripts %}<script src="/static/social.js"></script>{% endblock %}

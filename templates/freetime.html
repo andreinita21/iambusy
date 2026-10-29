@@ -1,0 +1,75 @@
+{% extends "auth_base.html" %}
+{% block title %}Timp liber comun{% endblock %}
+{% block body_class %}panel-page{% endblock %}
+{% block shell_class %}panel-shell panel-wide{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block actions %}
+<a href="/" class="btn">Orar</a>
+<a href="/friends" class="btn">Prieteni</a>
+{% endblock %}
+
+{% block content %}
+<header class="panel-hero panel-hero-lime">
+    <span class="tag tag-ink">Timp liber comun</span>
+    <h1 class="panel-title">Când suntem toți liberi?</h1>
+    <p class="panel-sub">Alege prietenii și săptămâna. Ce ți-au ascuns ei apare ca liber — vezi doar ce îți permit.</p>
+</header>
+
+<section class="panel-card" id="ft" data-monday="{{ monday }}" data-today="{{ today }}">
+    <fieldset class="group-pick">
+        <legend>Cu cine</legend>
+        {% for f in friends %}
+        <label class="check-chip">
+            <input type="checkbox" name="ft-friend" value="{{ f.username }}" {% if f.username in preselect %}checked{% endif %}>
+            <span>{{ f.display_name }}</span>
+        </label>
+        {% else %}
+        <span class="hint">Nu ai prieteni încă — <a href="/friends">adaugă-i aici</a>.</span>
+        {% endfor %}
+    </fieldset>
+
+    <div class="ft-controls">
+        <div class="ft-week">
+            <button type="button" class="btn btn-icon" id="ft-prev" aria-label="Săptămâna anterioară">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <b id="ft-range" class="mono">…</b>
+            <button type="button" class="btn btn-icon" id="ft-next" aria-label="Săptămâna următoare">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+        </div>
+        <div class="field">
+            <label for="ft-min">Cel puțin</label>
+            <div class="select-wrap">
+                <select class="select select-sm" id="ft-min">
+                    <option value="30">30 min</option>
+                    <option value="60" selected>1 oră</option>
+                    <option value="90">1h 30min</option>
+                    <option value="120">2 ore</option>
+                    <option value="180">3 ore</option>
+                </select>
+            </div>
+        </div>
+        <div class="field">
+            <label for="ft-from">Între</label>
+            <div class="ft-hours">
+                <input class="input input-sm" type="number" id="ft-from" min="0" max="23" value="8" aria-label="De la ora">
+                <span>–</span>
+                <input class="input input-sm" type="number" id="ft-to" min="1" max="24" value="22" aria-label="Până la ora">
+            </div>
+        </div>
+        <label class="check ft-me"><input type="checkbox" id="ft-me" checked><span class="check-box"></span><span class="check-text">Include-mă și pe mine</span></label>
+    </div>
+
+    <div class="ft-legend" aria-hidden="true">
+        <span><i class="sw-busy"></i>ocupat</span>
+        <span><i class="sw-lime"></i>liberi cu toții</span>
+    </div>
+    <div id="ft-grid" class="ft-grid" aria-live="polite"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}<script src="/static/freetime.js"></script>{% endblock %}

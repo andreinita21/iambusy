@@ -26,6 +26,21 @@
 </section>
 {% endif %}
 
+<section class="panel-card" id="settings" aria-labelledby="settings-title">
+    <h2 class="panel-card-title" id="settings-title">Setări</h2>
+    <form class="auth-form" method="post" action="/admin/settings">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="check">
+            <input type="checkbox" name="friend_link_signup" value="1" {% if friend_signup %}checked{% endif %}>
+            <span class="check-box" aria-hidden="true"></span>
+            <span class="check-text">Linkurile de prietenie pot crea conturi
+                <small>Cine primește linkul de prietenie al unui utilizator își poate face cont fără cod de
+                    invitație (în limita utilizărilor și a expirării linkului).</small></span>
+        </label>
+        <button type="submit" class="btn btn-sm btn-primary">Salvează</button>
+    </form>
+</section>
+
 <section class="panel-card" id="invites" aria-labelledby="invites-title">
     <h2 class="panel-card-title" id="invites-title">Invitații</h2>
     <p class="hint">Generează o invitație și trimite <b>linkul</b>: cine îl deschide ajunge direct la
@@ -98,7 +113,7 @@
                 {% if u.id == user.id %}<span class="tag tag-lime">tu</span>{% endif %}
                 {% if not u.is_active %}<span class="tag tag-pink">dezactivat</span>{% endif %}
                 <span class="row-meta mono">{{ u.activity_count }} activități · {{ u.session_count }} dispozitive ·
-                    creat {{ u.created_str }} · ultima autentificare {{ u.last_login_str }}{% if u.invite_note %} · invitație: {{ u.invite_note }}{% endif %}</span>
+                    creat {{ u.created_str }} · ultima autentificare {{ u.last_login_str }}{% if u.invite_note %} · invitație: {{ u.invite_note }}{% endif %}{% if u.invited_by_username %} · invitat de @{{ u.invited_by_username }}{% endif %}</span>
             </div>
             <div class="row-actions">
                 <form method="post" action="/admin/users/{{ u.id }}/logout">
