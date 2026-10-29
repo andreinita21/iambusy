@@ -1,0 +1,109 @@
+{% extends "auth_base.html" %}
+{% block title %}Contul meu{% endblock %}
+{% block body_class %}panel-page{% endblock %}
+{% block shell_class %}panel-shell{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block actions %}
+<a href="/" class="btn">Orar</a>
+{% if user.is_admin %}<a href="/admin" class="btn">Admin</a>{% endif %}
+{% endblock %}
+
+{% block content %}
+<header class="panel-hero">
+    <span class="tag tag-ink">Contul meu</span>
+    <h1 class="panel-title">{{ user.display_name }}</h1>
+    <p class="panel-sub mono">@{{ user.username }}</p>
+    <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger">Deconectează-mă</button>
+    </form>
+</header>
+
+<section class="panel-card" aria-labelledby="profile-title">
+    <h2 class="panel-card-title" id="profile-title">Profil</h2>
+    <form class="auth-form" method="post" action="/account/profile">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row-2">
+            <div class="field">
+                <label for="display_name">Nume afișat</label>
+                <input class="input" type="text" id="display_name" name="display_name"
+                    value="{{ user.display_name }}" maxlength="40" autocomplete="nickname" required>
+            </div>
+            <div class="field">
+                <label for="week1_start">Prima zi din săptămâna 1</label>
+                <input class="input" type="date" id="week1_start" name="week1_start"
+                    value="{{ user.week1_start }}" required>
+                <span class="hint">De aici se numără săptămânile pare / impare.</span>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Salvează profilul</button>
+    </form>
+</section>
+
+<section class="panel-card" aria-labelledby="password-title">
+    <h2 class="panel-card-title" id="password-title">Schimbă parola</h2>
+    <form class="auth-form" method="post" action="/account/password">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="username" value="{{ user.username }}" autocomplete="username" hidden>
+        <div class="field">
+            <label for="current_password">Parola actuală</label>
+            <input class="input" type="password" id="current_password" name="current_password"
+                autocomplete="current-password" maxlength="128" required>
+        </div>
+        <div class="row-2">
+            <div class="field">
+                <label for="new_password">Parola nouă</label>
+                <div class="pw-wrap">
+                    <input class="input" type="password" id="new_password" name="new_password"
+                        autocomplete="new-password" minlength="10" maxlength="128" required
+                        data-strength="pw-meter">
+                    <button type="button" class="pw-toggle" data-target="new_password" aria-pressed="false"
+                        aria-label="Arată parola">Arată</button>
+                </div>
+                <div class="pw-meter" id="pw-meter" data-level="0" aria-hidden="true">
+                    <i></i><i></i><i></i><i></i>
+                    <span class="pw-meter-label">minimum 10 caractere</span>
+                </div>
+            </div>
+            <div class="field">
+                <label for="new_password_confirm">Repetă parola nouă</label>
+                <input class="input" type="password" id="new_password_confirm" name="new_password_confirm"
+                    autocomplete="new-password" maxlength="128" required data-match="new_password">
+                <span class="hint match-hint" hidden>Parolele nu coincid încă.</span>
+            </div>
+        </div>
+        <p class="hint">Schimbarea parolei deconectează toate celelalte dispozitive.</p>
+        <button type="submit" class="btn btn-primary">Schimbă parola</button>
+    </form>
+</section>
+
+<section class="panel-card" aria-labelledby="devices-title">
+    <div class="panel-card-head">
+        <h2 class="panel-card-title" id="devices-title">Dispozitive conectate</h2>
+        {% if sessions | length > 1 %}
+        <form method="post" action="/account/sessions/revoke-others">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-danger">Deconectează-le pe celelalte</button>
+        </form>
+        {% endif %}
+    </div>
+    <p class="hint">Un dispozitiv rămâne conectat {{ session_days }} de zile de la ultima vizită.</p>
+    <ul class="rows">
+        {% for s in sessions %}
+        <li class="row{{ ' row-current' if s.is_current }}">
+            <div class="row-main">
+                <b>{{ s.device }}</b>
+                {% if s.is_current %}<span class="tag tag-lime">acest dispozitiv</span>{% endif %}
+                {% if not s.persistent %}<span class="tag">sesiune scurtă</span>{% endif %}
+                <span class="row-meta mono">{{ s.ip }} · activ {{ s.last_seen_str }} · conectat {{ s.created_str }}</span>
+            </div>
+            <form method="post" action="/account/sessions/{{ s.id }}/revoke">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm">{{ 'Ieși' if s.is_current else 'Deconectează' }}</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}

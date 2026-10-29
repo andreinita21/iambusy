@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ro">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="IamBusy — Editează orarul săptămânal: adaugă, mută și șterge activități.">
+    <meta name="theme-color" content="#17171c">
+    <title>IamBusy — Editează orarul</title>
+
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script src="/static/theme.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='6' y='6' width='88' height='88' rx='14' fill='%23ffd23f' stroke='%23111' stroke-width='8'/><rect x='24' y='40' width='52' height='12' fill='%23111'/><rect x='24' y='60' width='32' height='12' fill='%23111'/></svg>">
+</head>
+
+<body>
+    <div class="manage" role="main">
+
+        <!-- ── Header ──────────────────────────────────── -->
+        <header class="manage-head">
+            <a href="/" class="btn btn-icon" id="back-link" aria-label="Înapoi la program">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+            </a>
+            <h1 class="manage-title">Editează orarul<small>{{ user_name }} · click pe o celulă liberă sau trage un card</small></h1>
+            <button type="button" class="btn btn-icon theme-toggle" id="theme-toggle" aria-label="Schimbă tema">
+                <svg class="ico-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
+                </svg>
+                <svg class="ico-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+                </svg>
+            </button>
+            <button type="button" class="btn btn-primary" id="btn-add" aria-label="Adaugă activitate">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="3" stroke-linecap="round" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14"></path>
+                </svg>
+                <span>Adaugă</span>
+            </button>
+        </header>
+
+        <!-- ── Toolbar: week tabs + legend ─────────────── -->
+        <div class="manage-toolbar">
+            <div class="seg" id="week-tabs" role="tablist" data-current="{{ current_week }}">
+                <button type="button" class="seg-btn" data-week="odd" role="tab" aria-selected="true">
+                    Săpt. impară {% if current_week == 'odd' %}<span class="now-mark">acum</span>{% endif %}
+                </button>
+                <button type="button" class="seg-btn" data-week="even" role="tab" aria-selected="false">
+                    Săpt. pară {% if current_week == 'even' %}<span class="now-mark">acum</span>{% endif %}
+                </button>
+            </div>
+            <div class="legend" aria-hidden="true">
+                <span><i style="background:var(--c-curs)"></i>Curs</span>
+                <span><i style="background:var(--c-seminar)"></i>Seminar</span>
+                <span><i style="background:var(--c-lab)"></i>Laborator</span>
+                <span><i class="only"></i>doar în această săptămână</span>
+            </div>
+        </div>
+
+        <!-- ── Weekly grid ─────────────────────────────── -->
+        <div class="grid-wrap" id="grid-wrap">
+            <div class="wgrid" id="wgrid" aria-label="Orar săptămânal"></div>
+        </div>
+    </div>
+
+    <!-- ══════════════ Add / Edit modal ══════════════ -->
+    <div class="overlay" id="modal-overlay" aria-hidden="true">
+        <div class="modal" role="dialog" aria-labelledby="modal-title">
+            <div class="modal-head">
+                <h2 class="modal-title" id="modal-title">Adaugă activitate</h2>
+                <button type="button" class="modal-close" id="modal-close" aria-label="Închide">&times;</button>
+            </div>
+            <form class="modal-body" id="activity-form" autocomplete="off">
+                <input type="hidden" id="form-id" value="">
+
+                <div class="field">
+                    <label for="form-title">Activitate</label>
+                    <input class="input" type="text" id="form-title" placeholder="ex. OOP (L) | CJ101" required>
+                    <span class="hint">Format: <b>Materie (C/S/L) | Sală</b> — tipul colorează cardul.</span>
+                </div>
+
+                <div class="row-2">
+                    <div class="field">
+                        <label for="form-day">Ziua</label>
+                        <div class="select-wrap">
+                            <select class="select" id="form-day" required>
+                                {% for d in days %}
+                                <option value="{{ d }}">{{ day_display[d] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label id="week-type-label">Săptămâna</label>
+                        <div class="choice" role="radiogroup" aria-labelledby="week-type-label" id="form-week-type">
+                            <label><input type="radio" name="week_type" value="both" checked><span>Ambele</span>Ambele</label>
+                            <label><input type="radio" name="week_type" value="odd"><span>Impară</span>Impară</label>
+                            <label><input type="radio" name="week_type" value="even"><span>Pară</span>Pară</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row-2">
+                    <div class="field">
+                        <label for="form-start">Început</label>
+                        <input class="input" type="time" id="form-start" step="300" required>
+                    </div>
+                    <div class="field">
+                        <label for="form-end">Sfârșit</label>
+                        <input class="input" type="time" id="form-end" step="300" required>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" id="btn-cancel">Renunță</button>
+                    <button type="submit" class="btn btn-primary" id="btn-save">Salvează</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ══════════════ Conflict modal ══════════════ -->
+    <div class="overlay" id="conflict-overlay" aria-hidden="true">
+        <div class="modal" role="alertdialog" aria-labelledby="conflict-title">
+            <div class="modal-head warn">
+                <h2 class="modal-title" id="conflict-title">⚠ Suprapunere</h2>
+                <button type="button" class="modal-close" id="conflict-close" aria-label="Închide">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-text">Intervalul ales se suprapune cu:</p>
+                <div class="conflict-list" id="conflict-list"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" id="conflict-choose-another">Alege alt interval</button>
+                    <button type="button" class="btn btn-danger" id="conflict-delete">Șterge & salvează</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════ Delete confirm modal ══════════════ -->
+    <div class="overlay" id="delete-overlay" aria-hidden="true">
+        <div class="modal" role="alertdialog" aria-labelledby="delete-title">
+            <div class="modal-head danger">
+                <h2 class="modal-title" id="delete-title">Șterge activitatea</h2>
+                <button type="button" class="modal-close" id="delete-close" aria-label="Închide">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-text" id="delete-message">Sigur vrei să ștergi această activitate?</p>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" id="delete-cancel">Renunță</button>
+                    <button type="button" class="btn btn-danger" id="delete-confirm">Șterge</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/manage.js"></script>
+</body>
+
+</html>

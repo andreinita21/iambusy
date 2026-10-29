@@ -1,0 +1,133 @@
+{% extends "auth_base.html" %}
+{% block title %}Administrare{% endblock %}
+{% block body_class %}panel-page{% endblock %}
+{% block shell_class %}panel-shell panel-wide{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block actions %}
+<a href="/" class="btn">Orar</a>
+<a href="/account" class="btn">Cont</a>
+{% endblock %}
+
+{% block content %}
+<header class="panel-hero panel-hero-pink">
+    <span class="tag tag-ink">Administrare</span>
+    <h1 class="panel-title">Conturi &amp; invitații</h1>
+    <p class="panel-sub">{{ users | length }} conturi · {{ invites | selectattr('status', 'equalto', 'active') | list | length }} coduri active</p>
+</header>
+
+{% if temp_password %}
+<section class="panel-card panel-alert" role="alert">
+    <h2 class="panel-card-title">Parolă temporară pentru @{{ temp_password.username }}</h2>
+    <p class="secret mono" id="temp-password">{{ temp_password.password }}</p>
+    <p class="hint">Se afișează o singură dată. Trimite-o pe un canal sigur și cere-i utilizatorului să o
+        schimbe din „Contul meu”. Toate dispozitivele lui au fost deconectate.</p>
+    <button type="button" class="btn btn-sm" data-copy="temp-password">Copiază</button>
+</section>
+{% endif %}
+
+<section class="panel-card" id="invites" aria-labelledby="invites-title">
+    <h2 class="panel-card-title" id="invites-title">Invitații</h2>
+    <p class="hint">Generează o invitație și trimite <b>linkul</b>: cine îl deschide ajunge direct la
+        formularul de cont nou, fără să tasteze codul.</p>
+    <form class="auth-form invite-form" method="post" action="/admin/invites">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field field-grow">
+            <label for="note">Pentru cine</label>
+            <input class="input" type="text" id="note" name="note" maxlength="60" placeholder="ex. colegii de grupă">
+        </div>
+        <div class="field">
+            <label for="max_uses">Utilizări</label>
+            <input class="input" type="number" id="max_uses" name="max_uses" value="1" min="1" max="100" required>
+        </div>
+        <div class="field">
+            <label for="days">Expiră în (zile)</label>
+            <input class="input" type="number" id="days" name="days" value="7" min="0" max="365" required>
+            <span class="hint">0 = nu expiră</span>
+        </div>
+        <button type="submit" class="btn btn-accent">Generează invitație</button>
+    </form>
+
+    {% if invites %}
+    <ul class="rows">
+        {% for inv in invites %}
+        <li class="row{{ ' row-off' if inv.status != 'active' }}">
+            <div class="row-main">
+                <b class="mono code" id="code-{{ inv.id }}">{{ inv.code }}</b>
+                <span class="tag {{ 'tag-lime' if inv.status == 'active' else '' }}">
+                    {{ {'active': 'activ', 'used': 'folosit', 'expired': 'expirat', 'revoked': 'revocat'}[inv.status] }}
+                </span>
+                <span class="row-meta mono">{{ inv.uses }}/{{ inv.max_uses }} utilizări · {{ inv.expires_str }}{% if inv.note %} · {{ inv.note }}{% endif %}</span>
+                {% if inv.status == 'active' %}
+                <span class="invite-link mono" id="link-{{ inv.id }}">{{ inv.link }}</span>
+                {% endif %}
+            </div>
+            <div class="row-actions">
+                {% if inv.status == 'active' %}
+                <button type="button" class="btn btn-sm btn-primary" data-copy="link-{{ inv.id }}">Copiază linkul</button>
+                <button type="button" class="btn btn-sm" data-share="link-{{ inv.id }}" hidden>Trimite…</button>
+                <button type="button" class="btn btn-sm" data-copy="code-{{ inv.id }}">Doar codul</button>
+                <form method="post" action="/admin/invites/{{ inv.id }}/revoke">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Revocă</button>
+                </form>
+                {% else %}
+                <form method="post" action="/admin/invites/{{ inv.id }}/delete">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm">Șterge</button>
+                </form>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint">Niciun cod încă. Fără un cod activ, nimeni nu își poate crea cont.</p>
+    {% endif %}
+</section>
+
+<section class="panel-card" id="users" aria-labelledby="users-title">
+    <h2 class="panel-card-title" id="users-title">Conturi</h2>
+    <ul class="rows">
+        {% for u in users %}
+        <li class="row row-user{{ ' row-off' if not u.is_active }}">
+            <div class="row-main">
+                <b>{{ u.display_name }}</b>
+                <span class="mono">@{{ u.username }}</span>
+                {% if u.is_admin %}<span class="tag tag-yellow">admin</span>{% endif %}
+                {% if u.id == user.id %}<span class="tag tag-lime">tu</span>{% endif %}
+                {% if not u.is_active %}<span class="tag tag-pink">dezactivat</span>{% endif %}
+                <span class="row-meta mono">{{ u.activity_count }} activități · {{ u.session_count }} dispozitive ·
+                    creat {{ u.created_str }} · ultima autentificare {{ u.last_login_str }}{% if u.invite_note %} · invitație: {{ u.invite_note }}{% endif %}</span>
+            </div>
+            <div class="row-actions">
+                <form method="post" action="/admin/users/{{ u.id }}/logout">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm">Deconectează</button>
+                </form>
+                {% if u.id != user.id %}
+                <form method="post" action="/admin/users/{{ u.id }}/toggle">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm">{{ 'Dezactivează' if u.is_active else 'Reactivează' }}</button>
+                </form>
+                <form method="post" action="/admin/users/{{ u.id }}/reset-password">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm">Resetează parola</button>
+                </form>
+                <details class="danger-zone">
+                    <summary class="btn btn-sm btn-danger">Șterge…</summary>
+                    <form class="danger-form" method="post" action="/admin/users/{{ u.id }}/delete">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <label for="confirm-{{ u.id }}">Scrie <b class="mono">{{ u.username }}</b> ca să ștergi contul și orarul lui. Nu se poate anula.</label>
+                        <input class="input" type="text" id="confirm-{{ u.id }}" name="confirm_username"
+                            autocomplete="off" autocapitalize="none" spellcheck="false" required>
+                        <button type="submit" class="btn btn-sm btn-danger">Șterge definitiv</button>
+                    </form>
+                </details>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,23 @@
+# Virtual environment
+.venv/
+
+# Pytest cache
+.pytest_cache/
+__pycache__/
+*.pyc
+schedule_config.py
+schedule.db
+
+# Tests
+tests/
+
+# macOS
+.DS_Store
+schedule.db-shm
+schedule.db-wal
+
+# Secrets
+.secret_key
+
+# Database backups
+schedule.db.bak-*

@@ -1,0 +1,56 @@
+{% extends "auth_base.html" %}
+{% block title %}Autentificare{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    <header class="auth-head auth-head-yellow">
+        <span class="tag tag-ink">Bine ai revenit</span>
+        <h1 class="auth-title" id="auth-title">Intră în cont</h1>
+        <p class="auth-lead">Orarul tău te așteaptă exact unde l-ai lăsat.</p>
+    </header>
+
+    <nav class="auth-tabs" aria-label="Autentificare sau cont nou">
+        <a class="auth-tab is-active" href="/login" aria-current="page">Autentificare</a>
+        <a class="auth-tab" href="/register">Cont nou</a>
+    </nav>
+
+    <form class="auth-form" method="post" action="/login" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ next_url }}">
+
+        <div class="field">
+            <label for="username">Nume de utilizator</label>
+            <input class="input" type="text" id="username" name="username" value="{{ username }}"
+                autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"
+                maxlength="32" required {% if not username %}autofocus{% endif %}>
+        </div>
+
+        <div class="field">
+            <label for="password">Parolă</label>
+            <div class="pw-wrap">
+                <input class="input" type="password" id="password" name="password"
+                    autocomplete="current-password" maxlength="128" required {% if username %}autofocus{% endif %}>
+                <button type="button" class="pw-toggle" data-target="password" aria-pressed="false"
+                    aria-label="Arată parola">Arată</button>
+            </div>
+        </div>
+
+        <label class="check">
+            <input type="checkbox" name="remember" value="1" checked>
+            <span class="check-box" aria-hidden="true"></span>
+            <span class="check-text">Ține-mă minte pe acest dispozitiv
+                <small>Debifează pe un calculator care nu e al tău.</small></span>
+        </label>
+
+        <button type="submit" class="btn btn-primary btn-block">
+            Intră
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6"></path>
+            </svg>
+        </button>
+    </form>
+
+    <p class="auth-foot">Nu ai cont? <a href="/register">Creează unul cu un cod de invitație</a>.</p>
+</section>
+{% endblock %}

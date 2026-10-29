@@ -1,0 +1,85 @@
+{% extends "auth_base.html" %}
+{% block title %}Cont nou{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    <header class="auth-head auth-head-lime">
+        <span class="tag tag-ink">Doar cu invitație</span>
+        <h1 class="auth-title" id="auth-title">Creează-ți contul</h1>
+        <p class="auth-lead">Un orar doar al tău, de construit de la zero.</p>
+    </header>
+
+    <nav class="auth-tabs" aria-label="Autentificare sau cont nou">
+        <a class="auth-tab" href="/login">Autentificare</a>
+        <a class="auth-tab is-active" href="/register" aria-current="page">Cont nou</a>
+    </nav>
+
+    <form class="auth-form" method="post" action="/register" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {% if form.from_link and form.invite %}
+        <input type="hidden" name="invite" value="{{ form.invite }}">
+        <input type="hidden" name="from_link" value="1">
+        <div class="invite-ok">
+            <span class="flash-mark" aria-hidden="true">✓</span>
+            <span>Invitație validă <small class="mono">{{ form.invite }}</small></span>
+        </div>
+        {% else %}
+        <div class="field">
+            <label for="invite">Cod de invitație</label>
+            <input class="input input-code" type="text" id="invite" name="invite" value="{{ form.invite }}"
+                placeholder="XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" autocorrect="off"
+                spellcheck="false" maxlength="32" required {% if not form.invite %}autofocus{% endif %}>
+            <span class="hint">Îl primești de la administrator.</span>
+        </div>
+        {% endif %}
+
+        <div class="row-2">
+            <div class="field">
+                <label for="username">Nume de utilizator</label>
+                <input class="input" type="text" id="username" name="username" value="{{ form.username }}"
+                    autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"
+                    {% if form.from_link and not form.username %}autofocus{% endif %} minlength="3" maxlength="32" pattern="[a-z0-9][a-z0-9._\-]{1,30}[a-z0-9]" required>
+                <span class="hint">3–32: litere mici, cifre, <b>. _ -</b></span>
+            </div>
+            <div class="field">
+                <label for="display_name">Nume afișat</label>
+                <input class="input" type="text" id="display_name" name="display_name"
+                    value="{{ form.display_name }}" autocomplete="nickname" maxlength="40" required>
+                <span class="hint">Apare în „… e liber până la 14:00”.</span>
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="password">Parolă</label>
+            <div class="pw-wrap">
+                <input class="input" type="password" id="password" name="password" autocomplete="new-password"
+                    minlength="10" maxlength="128" required data-strength="pw-meter">
+                <button type="button" class="pw-toggle" data-target="password" aria-pressed="false"
+                    aria-label="Arată parola">Arată</button>
+            </div>
+            <div class="pw-meter" id="pw-meter" data-level="0" aria-hidden="true">
+                <i></i><i></i><i></i><i></i>
+                <span class="pw-meter-label">minimum 10 caractere</span>
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="password_confirm">Repetă parola</label>
+            <input class="input" type="password" id="password_confirm" name="password_confirm"
+                autocomplete="new-password" maxlength="128" required data-match="password">
+            <span class="hint match-hint" hidden>Parolele nu coincid încă.</span>
+        </div>
+
+        <button type="submit" class="btn btn-accent btn-block">
+            Creează contul
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6"></path>
+            </svg>
+        </button>
+    </form>
+
+    <p class="auth-foot">Ai deja cont? <a href="/login">Autentifică-te</a>.</p>
+</section>
+{% endblock %}
