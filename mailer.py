@@ -17,6 +17,7 @@ import urllib.request
 log = logging.getLogger("iambusy.mail")
 
 API_URL = "https://api.brevo.com/v3/smtp/email"
+USER_AGENT = "IamBusy/1.0 (+https://www.iambusy.ro)"
 
 _settings = {"api_key": "", "sender": "", "sender_name": "IamBusy", "reply_to": "",
              "background": True}
@@ -56,7 +57,9 @@ def _deliver(payload: dict) -> bool:
     request = urllib.request.Request(
         API_URL, data=json.dumps(payload).encode(), method="POST",
         headers={"api-key": _settings["api_key"], "accept": "application/json",
-                 "content-type": "application/json"})
+                 "content-type": "application/json",
+                 # Brevo's firewall turns away urllib's default User-Agent.
+                 "user-agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             return 200 <= response.status < 300
