@@ -57,3 +57,9 @@ CONTACT_EMAIL: str = ""
 # Without a key the "forgot password" page tells people to ask the admin.
 BREVO_API_KEY: str = ""
 MAIL_FROM: str = ""  # default: noreply@<domain of SITE_URL>
+
+# ──────────────────────── bot protection ──
+# Cloudflare Turnstile on sign-up and "forgot password" (dash.cloudflare.com →
+# Turnstile → Add widget).  Empty = off.
+TURNSTILE_SITE_KEY: str = ""
+TURNSTILE_SECRET_KEY: str = ""

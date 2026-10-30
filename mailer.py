@@ -16,6 +16,8 @@ import urllib.request
 
 from markupsafe import escape
 
+import db
+
 log = logging.getLogger("iambusy.mail")
 
 API_URL = "https://api.brevo.com/v3/smtp/email"
@@ -23,6 +25,10 @@ USER_AGENT = "IamBusy/1.0 (+https://www.iambusy.ro)"
 
 _settings = {"api_key": "", "sender": "", "sender_name": "IamBusy", "reply_to": "",
              "background": True}
+
+# Brevo's free plan sends 300 a day; stopping short keeps a bot (or a bug) from
+# spending all of it and keeps some room for the admin.
+DAILY_LIMIT = 250
 
 
 def configure(*, api_key: str, sender: str, sender_name: str = "IamBusy",
@@ -89,6 +95,10 @@ def send(to: str, subject: str, text: str, html: str, unsubscribe_url: str = "")
     if not enabled():
         log.warning("Email not configured (BREVO_API_KEY); dropped %r to %s", subject, to)
         return
+    if db.count_attempts("mail-global", 24 * 3600) >= DAILY_LIMIT:
+        log.error("Daily email limit (%d) reached; dropped %r to %s", DAILY_LIMIT, subject, to)
+        return
+    db.record_attempt("mail-global")
     if _settings["background"]:
         threading.Thread(target=_deliver, args=(payload,), daemon=True).start()
     else:

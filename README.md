@@ -20,7 +20,7 @@
 -   **Legal pages**: privacy policy (`/confidentialitate`, GDPR) and terms (`/termeni`), linked in every footer and on the sign-up form. Operator name and contact come from `OPERATOR_NAME` / `CONTACT_EMAIL`; bump `public.LEGAL_UPDATED` whenever their text changes.
 -   **Email is required**: sign-up asks for an address and the account opens once its confirmation link is clicked; accounts created earlier see a "IamBusy now needs your email" screen at their next login (logging out, exporting data and deleting the account stay possible there). The address is attached only after the click, so nobody can point an account at a mailbox they don't control. Emails go out through Brevo's API (`mailer.py`, `BREVO_API_KEY`) on a background thread; without a key the requirement is off.
 -   **Forgotten password**: `/forgot` sends a reset link (single-use, valid for an hour, stored only as SHA-256, replaced by newer ones and cancelled by a password change); the page answers the same whether or not the account exists. Resetting logs every device out and sends a notice. Rate limits: 5 requests / 15 min per IP, 3 emails / hour per account.
--   **Notification emails** (`emails.py`): friend requests and activity invites — with Accept / Decline buttons that work without logging in (signed personal link, 14 days, invalid once the address changes; opening it changes nothing, the buttons do) — plus answers to yours and changed / cancelled activities. Each kind can be switched off on the account page or with the one-click unsubscribe link (RFC 8058 `List-Unsubscribe`). Limits: the same request / invite at most once a day, 3 change emails an hour per activity, 30 notification emails a day per recipient.
+-   **Notification emails** (`emails.py`): friend requests and activity invites — with Accept / Decline buttons that work without logging in (signed personal link, 14 days, invalid once the address changes; opening it changes nothing, the buttons do) — plus answers to yours and changed / cancelled activities. Each kind can be switched off on the account page or with the one-click unsubscribe link (RFC 8058 `List-Unsubscribe`). Limits: the same request / invite at most once a day, 3 change emails an hour per activity, 30 notification emails a day per recipient, and 250 emails a day for the whole site (Brevo's free plan sends 300).
 -   **Your data**: the account page has *Descarcă datele mele* (everything stored about you as JSON, without password / token / PIN hashes) and *Șterge-mi contul definitiv* (password required; the last active admin can't delete themselves).
 -   **One address**: with `SITE_URL` set, any other host name and plain `http://` get a 301 (308 for form posts) to it, and copied links are built from it. Requests by IP or to `localhost` are left alone.
 -   **Search & previews**: `robots.txt`, `sitemap.xml`, canonical links, Open Graph / Twitter cards (share links and friend links get their own titles; PIN-protected links reveal nothing), JSON-LD, a web app manifest with PNG / maskable icons and `favicon.ico`.
@@ -31,7 +31,7 @@
 
 ## 🔐 Accounts & security
 
--   **Invite-only sign-up**: creating an account needs an invite code generated in the admin panel (single- or multi-use, optional expiry, revocable).
+-   **Sign-up**: open to anyone with a confirmed email (Cloudflare Turnstile on the form when configured). The admin panel can switch to invite-only in one click — then an invite code (single- or multi-use, optional expiry, revocable) or a friend link is needed.
 -   **Stay signed in**: a device is remembered for 30 days after its last visit ("Ține-mă minte"); untick it on shared computers for a 12-hour session.
 -   **Account page** (`/account`): display name, week-1 date, password change, and a list of connected devices you can log out one by one.
 -   **Admin panel** (`/admin`): manage invite codes; disable / re-enable, log out, reset the password of, or delete accounts. The admin cannot read other people's schedules.
@@ -113,6 +113,7 @@ iambusy/
 ├── recovery.py               # Required email, confirmation, forgot / reset password
 ├── emails.py                 # Notification emails, Accept / Decline and unsubscribe links
 ├── mailer.py                 # Outgoing email through the Brevo API
+├── captcha.py                # Cloudflare Turnstile check
 ├── public.py                 # Home page, legal pages, robots/sitemap/manifest, error pages, canonical host
 ├── auth.py                   # Login, registration, sessions, CSRF, rate limits, admin
 ├── social.py                 # Friends, groups, privacy rules, invites, friend links, free time
@@ -266,6 +267,7 @@ Everything lives in `schedule_config.py` (created by `setup.sh`, ignored by git)
 | `TRUSTED_PROXIES`      | Networks allowed to report the visitor IP (`CF-Connecting-IP`) and scheme (`X-Forwarded-Proto`) |
 | `SITE_URL`             | The public address, e.g. `https://www.iambusy.ro` — canonical redirect + copied links (`""` = off) |
 | `OPERATOR_NAME`, `CONTACT_EMAIL` | Who runs the site, shown in the footer and the legal pages |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile on sign-up and "forgot password" (empty = off) |
 | `BREVO_API_KEY`, `MAIL_FROM` | Brevo API key and sender for password-reset emails (`MAIL_FROM` defaults to `noreply@<domain>`) |
 
 Restart the app after editing it. Schedules are stored in `schedule.db` and edited through `/manage`.

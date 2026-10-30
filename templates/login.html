@@ -53,6 +53,6 @@
         </button>
     </form>
 
-    <p class="auth-foot">Nu ai cont? <a href="/register">Creează unul cu un cod de invitație</a>.</p>
+    <p class="auth-foot">Nu ai cont? <a href="/register">{{ 'Creează unul' if signup_open() else 'Creează unul cu un cod de invitație' }}</a>.</p>
 </section>
 {% endblock %}

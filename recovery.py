@@ -16,6 +16,7 @@ import secrets
 
 from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
 
+import captcha
 import db
 import emails
 import mailer
@@ -64,6 +65,9 @@ def forgot():
             return render_template("forgot.html", sent=False, value=value,
                                    enabled=True), 429
         db.record_attempt(ip_key)
+        if not captcha.verify(request.form.get("cf-turnstile-response"), client_ip()):
+            flash("Confirmă că nu ești robot (bifa de deasupra butonului).", "error")
+            return render_template("forgot.html", sent=False, value=value, enabled=True), 400
         if "@" in value:
             user = db.get_user_by_email(normalize_email(value))
         else:

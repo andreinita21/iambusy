@@ -31,6 +31,14 @@
     <form class="auth-form" method="post" action="/admin/settings">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="check">
+            <input type="checkbox" name="open_signup" value="1" {% if open_signup %}checked{% endif %}>
+            <span class="check-box" aria-hidden="true"></span>
+            <span class="check-text">Oricine își poate face cont
+                <small>Fără cod de invitație — doar cu email confirmat. Debifează ca să închizi înscrierea
+                    (de exemplu dacă apar conturi false); atunci e nevoie de invitație sau de link de
+                    prietenie.</small></span>
+        </label>
+        <label class="check">
             <input type="checkbox" name="friend_link_signup" value="1" {% if friend_signup %}checked{% endif %}>
             <span class="check-box" aria-hidden="true"></span>
             <span class="check-text">Linkurile de prietenie pot crea conturi

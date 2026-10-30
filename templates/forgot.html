@@ -1,5 +1,6 @@
 {% extends "auth_base.html" %}
 {% block title %}Am uitat parola{% endblock %}
+{% block scripts %}{% if turnstile_site_key() %}<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{% endif %}{% endblock %}
 
 {% block content %}
 <section class="auth-card" aria-labelledby="auth-title">
@@ -37,6 +38,7 @@
                 maxlength="254" required autofocus>
             <span class="hint">Merge doar dacă ai adăugat și confirmat un email în pagina contului.</span>
         </div>
+        {% include "_turnstile.html" %}
         <button type="submit" class="btn btn-primary btn-block">Trimite linkul</button>
     </form>
     <p class="auth-foot">Ți-ai amintit? <a href="/login">Autentifică-te</a>.</p>

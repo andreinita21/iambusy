@@ -16,7 +16,9 @@
 
 <h2>2. Contul tău</h2>
 <ul>
-    <li>Contul se creează doar cu un cod de invitație sau prin linkul de prietenie al unui utilizator.</li>
+    <li>{% if signup_open() %}Oricine își poate face cont; administratorul poate limita înscrierea la
+        invitații (cod sau link de prietenie) dacă e nevoie.{% else %}Contul se creează doar cu un cod de
+        invitație sau prin linkul de prietenie al unui utilizator.{% endif %}</li>
     <li>Trebuie să ai cel puțin 16 ani.</li>
     <li>Contul are nevoie de o adresă de email a ta, confirmată; o poți schimba oricând.</li>
     <li>Un cont e pentru o singură persoană. Nu folosi un nume care te dă drept altcineva.</li>

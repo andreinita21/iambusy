@@ -32,9 +32,9 @@
             îi poți trimite un link, fără să-și facă cont.</p>
         <div class="hero-cta">
             <a href="/login" class="btn btn-primary btn-lg">Intră în cont</a>
-            <a href="/register" class="btn btn-accent btn-lg">Am o invitație</a>
+            <a href="/register" class="btn btn-accent btn-lg">{{ 'Creează cont' if signup_open() else 'Am o invitație' }}</a>
         </div>
-        <p class="hint">Conturile se fac doar cu invitație — de la administrator sau prin linkul unui prieten.</p>
+        <p class="hint">{% if signup_open() %}Gratuit. Îți trebuie doar un email ca să-ți confirmi contul.{% else %}Conturile se fac doar cu invitație — de la administrator sau prin linkul unui prieten.{% endif %}</p>
     </div>
 
     <div class="hero-demo" aria-hidden="true">
@@ -97,8 +97,13 @@
 <section class="site-section" aria-labelledby="how-title">
     <h2 class="site-h2" id="how-title">Cum începi</h2>
     <ol class="steps">
+        {% if signup_open() %}
+        <li><b>Îți faci cont</b><span>Un nume de utilizator, o parolă și emailul, pe care îl confirmi cu un
+            click. Durează un minut.</span></li>
+        {% else %}
         <li><b>Primești o invitație</b><span>Un cod de la administrator sau linkul de prietenie al
             cuiva care folosește deja IamBusy.</span></li>
+        {% endif %}
         <li><b>Îți faci orarul</b><span>Adaugi activitățile o dată; le muți cu drag &amp; drop când se
             schimbă ceva.</span></li>
         <li><b>Îl împarți cât vrei</b><span>Prietenilor, unui grup sau printr-un link — fiecare vede

@@ -34,6 +34,7 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import captcha
 import db
 import db_social
 import mailer
@@ -456,6 +457,11 @@ def normalize_friend_code(raw: str) -> str:
     return code if FRIEND_CODE_RE.match(code) else ""
 
 
+def signup_open() -> bool:
+    """Admin switch: can anyone create an account, or only with an invite?"""
+    return db.get_setting("open_signup", "1") == "1"
+
+
 def friend_signup_enabled() -> bool:
     """Admin switch: may friend links create accounts (bypassing invite codes)?"""
     return db.get_setting("friend_link_signup", "1") == "1"
@@ -466,8 +472,9 @@ def register():
     if g.user is not None:
         return redirect(url_for("index"))
 
+    open_signup = signup_open()
     form = {"username": "", "display_name": "", "email": "", "invite": "", "from_link": False,
-            "friend": "", "friend_owner": None}
+            "friend": "", "friend_owner": None, "open": open_signup}
     ip_key = f"register-ip:{client_ip()}"
     friend_code = normalize_friend_code(request.values.get("friend"))
     if friend_code:
@@ -480,7 +487,10 @@ def register():
         if link is not None and db_social.count_invited_since(
                 link["user_id"], int(time.time()) - 86400) >= MAX_FRIEND_SIGNUPS_PER_DAY:
             link = None
-        if link is None:
+        if link is None and open_signup:
+            flash("Linkul de prietenie nu mai este valid — îți poți face cont, dar nu veți deveni "
+                  "automat prieteni.", "error")
+        elif link is None:
             db.record_attempt(ip_key)
             flash("Linkul de prietenie nu mai este valid sau nu poate crea conturi. "
                   "Cere un cod de invitație.", "error")
@@ -488,7 +498,7 @@ def register():
             form["friend"] = friend_code
             form["friend_owner"] = {"display_name": link["display_name"],
                                     "username": link["username"]}
-    elif request.method == "GET" and request.args.get("code"):
+    elif request.method == "GET" and request.args.get("code") and not open_signup:
         # Arriving through an invite link: check the code right away so the
         # visitor doesn't fill in the whole form for nothing.  Wrong codes
         # count against the same limit as failed registrations.
@@ -507,7 +517,8 @@ def register():
         form["username"] = normalize_username(request.form.get("username"))[:64]
         form["display_name"] = " ".join((request.form.get("display_name") or "").split())[:80]
         form["email"] = normalize_email(request.form.get("email"))
-        form["invite"] = "" if form["friend"] else normalize_invite(request.form.get("invite"))
+        form["invite"] = "" if form["friend"] or open_signup else normalize_invite(
+            request.form.get("invite"))
         password = request.form.get("password") or ""
         confirm = request.form.get("password_confirm") or ""
 
@@ -521,7 +532,10 @@ def register():
             or (None if valid_email(form["email"]) else "Adresa de email nu pare validă.")
             or validate_password(password, form["username"], form["display_name"])
             or (None if hmac.compare_digest(password, confirm) else "Parolele nu coincid.")
-            or (None if form["invite"] or form["friend"] else "Ai nevoie de un cod de invitație.")
+            or (None if form["invite"] or form["friend"] or open_signup
+                else "Ai nevoie de un cod de invitație.")
+            or (None if captcha.verify(request.form.get("cf-turnstile-response"), client_ip())
+                else "Confirmă că nu ești robot (bifa de deasupra butonului).")
         )
         if error is None and db.get_user_by_username(form["username"]):
             error = "Numele de utilizator este deja folosit."
@@ -736,6 +750,7 @@ def _render_admin(temp_password=None):
     return render_template(
         "admin.html", user=g.user, users=users, invites=invites,
         temp_password=temp_password, friend_signup=friend_signup_enabled(),
+        open_signup=signup_open(),
     )
 
 
@@ -748,9 +763,12 @@ def admin():
 @bp.route("/admin/settings", methods=["POST"])
 @admin_required
 def admin_settings():
-    enabled = request.form.get("friend_link_signup") == "1"
-    db.set_setting("friend_link_signup", "1" if enabled else "0")
-    flash("Linkurile de prietenie " + ("pot" if enabled else "nu mai pot") + " crea conturi.", "ok")
+    open_signup = request.form.get("open_signup") == "1"
+    friend_links = request.form.get("friend_link_signup") == "1"
+    db.set_setting("open_signup", "1" if open_signup else "0")
+    db.set_setting("friend_link_signup", "1" if friend_links else "0")
+    flash("Înscriere " + ("deschisă oricui" if open_signup else "doar cu invitație") + "; linkurile de "
+          "prietenie " + ("pot" if friend_links else "nu pot") + " crea conturi.", "ok")
     return redirect(url_for("auth.admin") + "#settings")
 
 

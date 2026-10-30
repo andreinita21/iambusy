@@ -30,6 +30,7 @@ import db_social
 import emails
 from auth import (
     absolute_url, client_ip, friend_signup_enabled, login_required, normalize_friend_code,
+    signup_open,
     normalize_username, _limited,
 )
 from calendar_data import (
@@ -640,7 +641,7 @@ def friend_link(code):
 
     if g.user is None:
         return render_template("friend_link.html", link=link, state="anonymous",
-                               can_signup=friend_signup_enabled())
+                               can_signup=friend_signup_enabled() or signup_open())
     if link["user_id"] == g.user["id"]:
         return render_template("friend_link.html", link=link, state="own")
     if db_social.are_friends(g.user["id"], link["user_id"]):

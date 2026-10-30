@@ -37,6 +37,8 @@ OPERATOR_NAME = getattr(config, "OPERATOR_NAME", "")
 CONTACT_EMAIL = getattr(config, "CONTACT_EMAIL", "")
 BREVO_API_KEY = getattr(config, "BREVO_API_KEY", "")
 MAIL_FROM = getattr(config, "MAIL_FROM", "")
+TURNSTILE_SITE_KEY = getattr(config, "TURNSTILE_SITE_KEY", "")
+TURNSTILE_SECRET_KEY = getattr(config, "TURNSTILE_SECRET_KEY", "")
 
 from schedule_engine import DAY_DISPLAY, DAYS, find_conflicts, is_odd_week, when_label
 from db import (
@@ -57,6 +59,7 @@ from calendar_data import (
 )
 import auth
 from auth import login_required
+import captcha
 import emails
 import mailer
 import public
@@ -86,6 +89,7 @@ auth.configure(
 )
 public.configure(site_url=SITE_URL, operator_name=OPERATOR_NAME, contact_email=CONTACT_EMAIL,
                  session_days=SESSION_DAYS, short_session_hours=SHORT_SESSION_HOURS)
+captcha.configure(site_key=TURNSTILE_SITE_KEY, secret=TURNSTILE_SECRET_KEY)
 mailer.configure(api_key=BREVO_API_KEY, sender=MAIL_FROM or public.default_sender(),
                  reply_to=CONTACT_EMAIL)
 social.configure(default_week1_start=DEFAULT_WEEK1_START)
@@ -105,6 +109,8 @@ app.register_blueprint(social.bp)
 app.register_blueprint(sharing.bp)
 app.jinja_env.globals["csrf_token"] = auth.csrf_token
 app.jinja_env.globals["asset"] = public.asset_url
+app.jinja_env.globals["signup_open"] = auth.signup_open
+app.jinja_env.globals["turnstile_site_key"] = captcha.site_key
 app.context_processor(public.template_globals)
 app.register_error_handler(HTTPException, public.handle_http_error)
 app.register_error_handler(Exception, public.handle_unexpected_error)
@@ -118,13 +124,16 @@ def inject_badge():
     return {"social_badge": badge}
 
 
+# Turnstile (when configured) loads its script and iframe from Cloudflare.
+_TURNSTILE = f" {captcha.ORIGIN}" if captcha.enabled() else ""
 CSP = "; ".join([
     "default-src 'self'",
-    "script-src 'self'",
+    f"script-src 'self'{_TURNSTILE}",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
     "img-src 'self' data:",
-    "connect-src 'self'",
+    f"connect-src 'self'{_TURNSTILE}",
+    f"frame-src 'self'{_TURNSTILE}",
     "form-action 'self'",
     "base-uri 'none'",
     "object-src 'none'",
