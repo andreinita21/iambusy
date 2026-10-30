@@ -95,6 +95,10 @@ PRESETS = {
     "bubblegum": ("Bubblegum (tot roz)", _p(
         "#ffe4f1", "#fff5fa", "#5a0f36", "#9c4f76", "#4a0a2c", "#ff9ccf", "#ff5fa8", "#ffd0e7",
         "#d9a6ff", "#ffa3c4", "#e7a3f0", "#f7b3d9", "#ff4d8d")),
+    "amethyst": ("Ametist (tot mov)", _p(
+        "#160e22", "#251838", "#f1e6ff", "#b39cd4", "#1a0b2e", "#c084fc", "#e879f9", "#ddd6fe",
+        "#8f9bfb", "#f5a3e0", "#a78bfa", "#bcc6ff", "#f7609c",
+        paper_2="#1e1430", card_2="#1d1330", ink_2="#d8c8f0")),
 }
 DEFAULT_PRESET = "iambusy-dark"
 
