@@ -66,6 +66,7 @@ import public
 import recovery
 import social
 import sharing
+import themes
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -107,10 +108,12 @@ app.register_blueprint(auth.bp)
 app.register_blueprint(recovery.bp)
 app.register_blueprint(social.bp)
 app.register_blueprint(sharing.bp)
+app.register_blueprint(themes.bp)
 app.jinja_env.globals["csrf_token"] = auth.csrf_token
 app.jinja_env.globals["asset"] = public.asset_url
 app.jinja_env.globals["signup_open"] = auth.signup_open
 app.jinja_env.globals["turnstile_site_key"] = captcha.site_key
+app.jinja_env.globals["theme_style"] = themes.theme_style
 app.context_processor(public.template_globals)
 app.register_error_handler(HTTPException, public.handle_http_error)
 app.register_error_handler(Exception, public.handle_unexpected_error)

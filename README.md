@@ -88,8 +88,9 @@ A daily cron job runs the backup (and drops rate-limit records older than a day)
 -   **Day Navigation**: Switch days with **Previous/Next arrows**, the **week strip**, keyboard (`←` `→` `T` `C`) or swipe.
 -   **Month Calendar with Busy Bars**: A custom date picker where every day shows a tiny 07:00–22:00 bar of its courses (colour-coded by type) and the academic week number. Tap a day to preview its full timeline and free windows *before* you commit to it, then open it or jump straight to "schedule something here".
 -   **Free Windows at a Glance**: Each day lists its gaps between courses, and every gap has an **Adaugă** shortcut that opens the editor pre-filled with that day, week parity and time slot.
--   **Neobrutalist UI**: Thick borders, hard offset shadows, flat saturated colour and heavy type. Dark theme by default, light theme one click away (remembered per device).
--   **Mobile Optimized**: Bottom-sheet calendar, swipe navigation and a horizontally scrollable weekly grid.
+-   **Neobrutalist UI**: Thick borders, hard offset shadows, flat saturated colour and heavy type. Dark theme by default; visitors get a light / dark switch (remembered per device).
+-   **Colour Themes** (`/account/theme`): 13 presets inspired by terminal themes (Catppuccin Mocha / Latte, Dracula, Nord, Gruvbox, Tokyo Night, Rosé Pine, One Dark, Solarized Light, Everforest, an all-pink one…). Tap one to try it on the whole page, then use it, or tweak any of them / start from scratch in the editor (13 colours, live preview, contrast warnings) and save up to 12 of your own. The choice is stored on the account, so it follows you to every device.
+-   **Mobile Optimized**: Constant-height bottom-sheet calendar (day preview always in view, swipe for months, drag down to close), swipe between days, long-press to move cards in the editor, bottom-sheet forms with Save always visible.
 
 ### 🗓️ Schedule Management
 
@@ -98,7 +99,7 @@ A full-featured management page (`/manage`) lets you take control of your schedu
 -   **Weekly Grid View**: See all your activities laid out on a 7-day × 15-hour grid, with separate tabs for Odd and Even weeks.
 -   **Add Activities**: Click any empty cell or use the **+** button to add a new activity with a name, day, time, and week type.
 -   **Edit Activities**: Click on any existing activity card to edit its details.
--   **Drag & Drop**: Grab any activity card and drag it to a new time slot or day — duration is preserved automatically.
+-   **Drag & Drop**: Grab any activity card and drag it to a new time slot or day — duration is preserved automatically. On touch screens, hold the card for a moment to pick it up (a plain swipe scrolls the grid).
 -   **Delete Activities**: Remove activities with a single click and confirmation dialog.
 -   **Conflict Detection**: When adding or moving an activity into an occupied time slot, a warning dialog shows the conflicting activities and gives you two options:
     -   **Delete the conflicting activity** and proceed with the save.
@@ -119,6 +120,7 @@ iambusy/
 ├── auth.py                   # Login, registration, sessions, CSRF, rate limits, admin
 ├── social.py                 # Friends, groups, privacy rules, invites, friend links, free time
 ├── sharing.py                # Public share links (no account needed)
+├── themes.py                 # Colour themes: presets, custom themes, per-user <style>
 ├── calendar_data.py          # A user's days as one viewer may see them (masking)
 ├── visibility.py             # Full / busy / hidden rule precedence
 ├── accounts.py               # Command-line account maintenance

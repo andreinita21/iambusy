@@ -1,0 +1,177 @@
+{% extends "auth_base.html" %}
+{% block title %}Temă și culori{% endblock %}
+{% block body_class %}panel-page{% endblock %}
+{% block shell_class %}panel-shell panel-shell-wide{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block actions %}
+<a href="/" class="btn">Orar</a>
+<a href="/account" class="btn">Cont</a>
+{% endblock %}
+
+{% macro swatch_card(t, is_active) %}
+<button type="button" class="theme-card{{ ' is-active' if is_active }}" data-key="{{ t.key }}"
+    aria-pressed="{{ 'true' if is_active else 'false' }}"
+    style="--tp:{{ t.colors.paper }};--tc:{{ t.colors.card }};--ti:{{ t.colors.ink }};--tm:{{ t.colors.muted }};--ta:{{ t.colors.yellow }};--tb:{{ t.colors.pink }};--tf:{{ t.colors.lime }};--t1:{{ t.colors.blue }};--t2:{{ t.colors.orange }};--t3:{{ t.colors.purple }}">
+    <span class="tc-mock" aria-hidden="true">
+        <span class="tc-bar"><i></i><i></i><i></i></span>
+        <span class="tc-row"><b></b><span><i></i><i></i></span></span>
+        <span class="tc-row"><b class="tc-free"></b><span><i></i></span></span>
+        <span class="tc-dots"><i></i><i></i><i></i><i></i><i></i></span>
+    </span>
+    <span class="tc-name">{{ t.name }}</span>
+    {% if is_active %}<span class="tag tag-lime tc-active">Activă</span>{% endif %}
+</button>
+{% endmacro %}
+
+{% block content %}
+<header class="panel-hero">
+    <span class="tag tag-ink">Temă</span>
+    <h1 class="panel-title">Culorile tale</h1>
+    <p class="panel-sub">Alege o temă gata făcută, modific-o sau fă-ți una de la zero. Atinge o temă ca s-o
+        vezi pe toată pagina înainte s-o folosești. Se aplică doar pentru tine, pe orice dispozitiv pe care
+        ești conectat.</p>
+</header>
+
+<section class="panel-card" id="presets" aria-labelledby="presets-title">
+    <h2 class="panel-card-title" id="presets-title">Teme gata făcute</h2>
+    <p class="hint">Inspirate din temele preferate din terminal și editoare de cod.</p>
+    <div class="theme-grid">
+        {% for t in data.presets %}
+        {{ swatch_card(t, active == t.key or (not active and t.key == 'preset:iambusy-dark')) }}
+        {% endfor %}
+    </div>
+</section>
+
+<section class="panel-card" id="mine" aria-labelledby="mine-title">
+    <h2 class="panel-card-title" id="mine-title">Temele tale</h2>
+    {% if data.custom %}
+    <div class="theme-grid">
+        {% for t in data.custom %}{{ swatch_card(t, active == t.key) }}{% endfor %}
+    </div>
+    {% else %}
+    <p class="hint">Încă nu ai salvat nicio temă. Pornește de la una gata făcută (atinge-o, apoi
+        „Modifică”) sau de la zero, mai jos.</p>
+    {% endif %}
+    <button type="button" class="btn" id="theme-new">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        Temă nouă
+    </button>
+</section>
+
+<section class="panel-card theme-editor" id="editor" aria-labelledby="editor-title" hidden>
+    <h2 class="panel-card-title" id="editor-title">Editor</h2>
+
+    <div class="te-layout">
+        <div class="te-sample" aria-label="Cum arată">
+            <div class="te-sample-inner">
+                <div class="hero state-busy te-hero">
+                    <div class="hero-top">
+                        <span class="tag">Săptămâna 5 · impară</span>
+                        <span class="state-pill"><span class="state-dot"></span>Ocupat</span>
+                    </div>
+                    <div class="status-main">Ai Curs până la 12:00.</div>
+                    <div class="hero-summary"><span class="tag tag-lime">Liber 12:00–14:00</span></div>
+                </div>
+                <div class="te-strip">
+                    <span class="strip-day"><span class="strip-name">L</span><span class="strip-num">26</span></span>
+                    <span class="strip-day today"><span class="strip-name">Ma</span><span class="strip-num">27</span></span>
+                    <span class="strip-day selected"><span class="strip-name">Mi</span><span class="strip-num">28</span></span>
+                    <span class="strip-day weekend"><span class="strip-name">S</span><span class="strip-num">31</span></span>
+                </div>
+                <article class="course c-blue te-course">
+                    <div class="course-time"><span>10:00</span><span class="t-sep"></span><span>12:00</span></div>
+                    <div class="course-body">
+                        <div class="course-meta"><span class="tag kind-tag">Curs</span><span class="tag">2h</span><span class="tag now-tag">Acum</span></div>
+                        <div class="course-subject">Baze de date</div>
+                        <div class="course-room">PR-002 · <span class="te-muted">text secundar</span></div>
+                    </div>
+                </article>
+                <div class="te-chips">
+                    <span class="tag" style="background:var(--orange);color:var(--on-accent)">Seminar</span>
+                    <span class="tag" style="background:var(--purple);color:var(--on-accent)">Laborator</span>
+                    <span class="tag" style="background:var(--cyan);color:var(--on-accent)">Altele</span>
+                    <span class="tag" style="background:var(--pink);color:var(--on-accent)">Personal</span>
+                    <span class="tag" style="background:var(--red);color:var(--on-accent)">Șterge</span>
+                </div>
+                <div class="te-buttons">
+                    <span class="btn btn-primary btn-sm">Salvează</span>
+                    <span class="btn btn-sm">Renunță</span>
+                </div>
+            </div>
+        </div>
+
+        <form class="te-form" method="post" action="/account/theme/save" id="theme-form" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="id" id="te-id" value="">
+            <div class="row-2">
+                <div class="field">
+                    <label for="te-name">Numele temei</label>
+                    <input class="input" type="text" id="te-name" name="name" maxlength="40" required
+                        placeholder="ex. Roz de tot">
+                </div>
+                <div class="field">
+                    <label for="te-base">Pornește de la</label>
+                    <div class="select-wrap">
+                        <select class="select" id="te-base">
+                            {% for t in data.presets %}<option value="{{ t.key }}">{{ t.name }}</option>{% endfor %}
+                            {% for t in data.custom %}<option value="{{ t.key }}">{{ t.name }} (a ta)</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="te-colors">
+                {% for k in data['keys'] %}
+                <div class="te-color">
+                    <input type="color" id="te-c-{{ k.key }}" data-key="{{ k.key }}" aria-label="{{ k.label }}">
+                    <label for="te-c-{{ k.key }}"><b>{{ k.label }}</b><small>{{ k.hint }}</small></label>
+                    <input class="input input-sm te-hex mono" type="text" name="c_{{ k.key }}" data-key="{{ k.key }}"
+                        maxlength="7" spellcheck="false" aria-label="{{ k.label }} (cod hex)" pattern="#[0-9a-fA-F]{6}" required>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="te-warn" id="te-warn" role="status" hidden></div>
+
+            <label class="check">
+                <input type="checkbox" name="apply" value="1" checked>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text">Folosește tema după ce o salvez</span>
+            </label>
+
+            <div class="te-actions">
+                <button type="submit" class="btn btn-primary">Salvează</button>
+                <button type="submit" class="btn" id="te-copy" hidden>Salvează ca temă nouă</button>
+                <button type="button" class="btn btn-ghost" id="te-cancel">Renunță</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+{# Bar shown while a theme is being previewed on the whole page. #}
+<div class="theme-bar" id="theme-bar" hidden>
+    <span class="theme-bar-text">Previzualizezi: <b id="theme-bar-name"></b></span>
+    <div class="theme-bar-actions">
+        <form method="post" action="/account/theme/use" id="theme-use-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="theme" id="theme-use-key" value="">
+            <button type="submit" class="btn btn-primary btn-sm" id="theme-use">Folosește</button>
+        </form>
+        <button type="button" class="btn btn-sm" id="theme-edit">Modifică</button>
+        <form method="post" id="theme-delete-form" hidden>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-danger btn-sm">Șterge</button>
+        </form>
+        <button type="button" class="btn btn-ghost btn-sm" id="theme-revert">Renunță</button>
+    </div>
+</div>
+
+<script type="application/json" id="theme-data">{{ data | tojson }}</script>
+<div hidden id="theme-active" data-key="{{ active }}" data-max="{{ max_themes }}" data-count="{{ data.custom | length }}"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ asset('theme_editor.js') }}"></script>
+{% endblock %}

@@ -306,8 +306,21 @@ def _migrate(conn) -> None:
         # Which notification emails the user wants (see emails.KINDS).
         conn.execute("ALTER TABLE users ADD COLUMN email_notify TEXT NOT NULL "
                      f"DEFAULT '{DEFAULT_EMAIL_NOTIFY}'")
+    if "theme" not in user_cols:
+        # "" (default look), "preset:<key>" or "custom:<user_themes.id>" — see themes.py.
+        conn.execute("ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT ''")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) "
                  "WHERE email IS NOT NULL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_themes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name        TEXT    NOT NULL,
+            colors      TEXT    NOT NULL,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_themes_user ON user_themes(user_id)")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS email_tokens (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -484,7 +497,7 @@ def list_users() -> list[dict]:
 def update_user(user_id: int, **fields) -> None:
     """Update whitelisted columns of a user."""
     allowed = {"display_name", "password_hash", "is_active", "week1_start", "last_login_at",
-               "email", "email_notify"}
+               "email", "email_notify", "theme"}
     unknown = set(fields) - allowed
     if unknown:
         raise ValueError(f"Cannot update {sorted(unknown)}")
@@ -987,3 +1000,50 @@ def pending_email(user_id: int) -> str:
         (user_id, _now())).fetchone()
     conn.close()
     return row["email"] if row else ""
+
+
+# ═════════════════════════════════════════════════ Colour themes ══
+
+def list_user_themes(user_id: int) -> list:
+    conn = _get_conn()
+    rows = conn.execute("SELECT * FROM user_themes WHERE user_id = ? ORDER BY id",
+                        (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def get_user_theme(user_id: int, theme_id: int):
+    conn = _get_conn()
+    row = conn.execute("SELECT * FROM user_themes WHERE id = ? AND user_id = ?",
+                       (theme_id, user_id)).fetchone()
+    conn.close()
+    return row
+
+
+def save_user_theme(user_id: int, name: str, colors: str, theme_id: int = None):
+    """Create a theme (or update *theme_id*, if it is the user's); returns its id or ``None``."""
+    now = int(time.time())
+    conn = _get_conn()
+    if theme_id is None:
+        cur = conn.execute("INSERT INTO user_themes (user_id, name, colors, created_at, updated_at) "
+                           "VALUES (?, ?, ?, ?, ?)", (user_id, name, colors, now, now))
+        theme_id = cur.lastrowid
+    elif not conn.execute("UPDATE user_themes SET name = ?, colors = ?, updated_at = ? "
+                          "WHERE id = ? AND user_id = ?",
+                          (name, colors, now, theme_id, user_id)).rowcount:
+        theme_id = None
+    conn.commit()
+    conn.close()
+    return theme_id
+
+
+def delete_user_theme(user_id: int, theme_id: int) -> bool:
+    conn = _get_conn()
+    deleted = conn.execute("DELETE FROM user_themes WHERE id = ? AND user_id = ?",
+                           (theme_id, user_id)).rowcount
+    if deleted:
+        conn.execute("UPDATE users SET theme = '' WHERE id = ? AND theme = ?",
+                     (user_id, f"custom:{theme_id}"))
+    conn.commit()
+    conn.close()
+    return bool(deleted)

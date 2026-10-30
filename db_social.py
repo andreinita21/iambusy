@@ -917,7 +917,7 @@ def export_user_data(user_id: int) -> dict:
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
     user = dict(conn.execute(
-        "SELECT u.username, u.display_name, u.email, u.email_notify, u.week1_start, u.is_admin, "
+        "SELECT u.username, u.display_name, u.email, u.email_notify, u.theme, u.week1_start, u.is_admin, "
         "u.created_at, "
         "u.last_login_at, inviter.username AS invited_by "
         "FROM users u LEFT JOIN users inviter ON inviter.id = u.invited_by WHERE u.id = ?",
@@ -975,6 +975,8 @@ def export_user_data(user_id: int) -> dict:
             "JOIN share_links l ON l.id = r.link_id WHERE l.user_id = ?", user_id),
         "devices": rows("SELECT user_agent, ip, persistent, created_at, last_seen, expires_at "
                         "FROM sessions WHERE user_id = ? ORDER BY id", user_id),
+        "themes": rows("SELECT id, name, colors, created_at, updated_at FROM user_themes "
+                       "WHERE user_id = ? ORDER BY id", user_id),
     }
     data["security_records"] = rows(
         "SELECT key, ts FROM auth_attempts WHERE key IN (?, ?, ?) OR key LIKE ? ESCAPE '\\' "
