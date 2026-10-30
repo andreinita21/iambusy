@@ -181,7 +181,7 @@ def resend_verification():
         flash("Ai cerut prea multe confirmări. Încearcă din nou peste o oră.", "error")
     else:
         send_verification(g.user, pending)
-        flash(f"Am retrimis linkul la {pending}.", "ok")
+        flash(f"Am retrimis linkul la {pending}. Verifică și folderul Spam.", "ok")
     return redirect(_back())
 
 

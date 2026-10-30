@@ -15,7 +15,7 @@
         {% if pending %}
         <h1 class="auth-title" id="auth-title">Verifică-ți emailul</h1>
         <p class="auth-lead">Am trimis un link de confirmare la <b>{{ pending }}</b>. Apasă-l și contul se
-            deschide.</p>
+            deschide. Nu-l găsești? Uită-te și în folderul <b>Spam</b>.</p>
         {% elif is_new %}
         <h1 class="auth-title" id="auth-title">Confirmă-ți emailul</h1>
         <p class="auth-lead">Ultimul pas: adaugă adresa de email și apasă linkul pe care ți-l trimitem.</p>
@@ -29,7 +29,8 @@
 
     <div class="auth-form">
         {% if pending %}
-        <p class="hint">N-a venit în câteva minute? Verifică folderul Spam. Linkul e valabil 24 de ore.</p>
+        <p class="hint">Dacă emailul e în Spam, marchează-l „Nu este spam” sau mută-l în Inbox — cât stă în
+            Spam, Gmail dezactivează butoanele din el. Linkul e valabil 24 de ore.</p>
         <form method="post" action="/confirm-email/resend">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-primary btn-block">Retrimite linkul</button>
