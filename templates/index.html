@@ -318,8 +318,8 @@
             <a href="https://github.com/andreinita21/iambusy" target="_blank" rel="noopener noreferrer">IamBusy</a>
             <span>by Andrei Niță</span>
             <span aria-hidden="true">·</span>
-            <span><kbd>←</kbd> <kbd>→</kbd> zile · <kbd>T</kbd> azi · <kbd>C</kbd> calendar</span>
-            <span aria-hidden="true">·</span>
+            <span class="kbd-hints"><kbd>←</kbd> <kbd>→</kbd> zile · <kbd>T</kbd> azi · <kbd>C</kbd> calendar</span>
+            <span class="kbd-hints" aria-hidden="true">·</span>
             <a href="/confidentialitate">Confidențialitate</a>
             <a href="/termeni">Termeni</a>
         </footer>
@@ -330,22 +330,30 @@
     <div class="cal" id="cal" role="dialog" aria-modal="true" aria-label="Calendar" data-selected="{{ context.view_date_iso }}"
         data-today="{{ context.today_iso }}" data-api="{{ context.api_days }}" data-mode="{{ mode }}"
         data-first="{{ context.window_first }}" data-last="{{ context.window_last }}">
-        <div class="cal-grip" aria-hidden="true"></div>
-        <div class="cal-head">
-            <button type="button" class="btn btn-icon" id="cal-prev" aria-label="Luna anterioară">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
-            </button>
-            <h2 class="cal-title" id="cal-title"><span id="cal-month">…</span><small id="cal-sub"></small></h2>
-            <button type="button" class="btn btn-sm" id="cal-today">Azi</button>
-            <button type="button" class="btn btn-icon" id="cal-next" aria-label="Luna următoare">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-            </button>
+        <div class="cal-top" id="cal-top">
+            <div class="cal-grip" aria-hidden="true"></div>
+            <div class="cal-head">
+                <h2 class="cal-title" id="cal-title"><span id="cal-month">…</span><small id="cal-sub"></small></h2>
+                <button type="button" class="btn btn-sm" id="cal-today">Azi</button>
+                <button type="button" class="btn btn-icon" id="cal-prev" aria-label="Luna anterioară">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+                <button type="button" class="btn btn-icon" id="cal-next" aria-label="Luna următoare">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </button>
+                <button type="button" class="btn btn-icon cal-close" id="cal-close" aria-label="Închide calendarul">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.8" stroke-linecap="round" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6L6 18"></path>
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <div class="cal-grid" id="cal-grid" role="grid" aria-labelledby="cal-title"></div>
@@ -366,7 +374,7 @@
             </div>
             <div class="cal-preview-body">
                 <ul class="cal-preview-list" id="cal-preview-list"></ul>
-                <p class="cal-preview-empty" id="cal-preview-empty">Apasă pe o zi ca să vezi programul ei{% if own %} înainte să îți planifici ceva{% endif %}.</p>
+                <p class="cal-preview-empty" id="cal-preview-empty">Atinge o zi ca să vezi programul ei{% if own %} înainte să îți planifici ceva{% endif %}.</p>
             </div>
             <div class="cal-preview-actions">
                 <a class="btn btn-primary" id="cal-open" href="#" hidden>Vezi ziua</a>

@@ -124,6 +124,16 @@ button {
   border: 0;
 }
 
+/* No double-tap zoom (and no tap delay) on things that are tapped. */
+a,
+button,
+label,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
 :focus-visible {
   outline: var(--bw) solid var(--ink);
   outline-offset: 3px;
@@ -907,6 +917,12 @@ kbd {
   }
 }
 
+.cal-top {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
 .cal-grip {
   width: 44px;
   height: 5px;
@@ -922,7 +938,7 @@ kbd {
 
 .cal-head {
   display: grid;
-  grid-template-columns: 40px 1fr auto 40px;
+  grid-template-columns: minmax(0, 1fr) auto 40px 40px 40px;
   gap: var(--sp-2);
   align-items: center;
 }
@@ -932,12 +948,18 @@ kbd {
   min-height: 40px;
 }
 
+.cal-close {
+  background: var(--card-2);
+}
+
 .cal-title {
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   text-transform: capitalize;
-  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cal-title small {
@@ -1219,6 +1241,99 @@ kbd {
   min-height: 44px;
 }
 
+.cal { overscroll-behavior: contain; }
+.cal.dragging { transition: none; }
+
+.cal-grid.from-right { animation: cal-in-right 200ms cubic-bezier(.2, .8, .2, 1); }
+.cal-grid.from-left { animation: cal-in-left 200ms cubic-bezier(.2, .8, .2, 1); }
+
+@keyframes cal-in-right {
+  from { opacity: 0.2; transform: translateX(28px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes cal-in-left {
+  from { opacity: 0.2; transform: translateX(-28px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Phones: a bottom sheet of constant height.  The month grid stays put and
+   the day preview fills the rest, scrolling on its own — so tapping a day
+   shows its programme right away, without scrolling the sheet. */
+@media (max-width: 639px) {
+  .cal {
+    height: min(90vh, 700px);
+    height: min(90dvh, 700px);
+    max-height: none;
+    gap: 10px;
+    padding: 10px var(--sp-3) calc(var(--sp-3) + env(safe-area-inset-bottom));
+    overflow: hidden;
+  }
+
+  .cal-top {
+    padding-top: 4px;
+    touch-action: none;   /* dragged down to close (schedule.js) */
+  }
+
+  .cal-grip { margin: 0 auto; }
+
+  .cal-title { font-size: 1.05rem; }
+
+  .cal-grid {
+    flex: none;
+    grid-template-columns: 24px repeat(7, minmax(0, 1fr));
+    gap: 4px;
+    touch-action: pan-y;  /* sideways swipes change the month */
+  }
+
+  .cal-wk { font-size: 0.6rem; margin-right: 0; }
+
+  .cal-day {
+    min-height: 44px;
+    justify-content: center;
+    gap: 5px;
+    padding: 4px 3px;
+  }
+
+  .cal-num { font-size: 1rem; }
+  .cal-cnt { display: none; }
+
+  .cal-legend {
+    flex: none;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  .cal-legend::-webkit-scrollbar { display: none; }
+
+  .cal-preview {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 10px var(--sp-3);
+  }
+
+  .cal-preview-body {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+  }
+
+  .cal-preview-actions .btn { min-height: 46px; }
+}
+
+@media (max-width: 400px) {
+  .cal-head { grid-template-columns: minmax(0, 1fr) auto 36px 36px 36px; gap: 6px; }
+  .cal-head .btn-icon { width: 36px; min-height: 36px; }
+  .cal-title { font-size: 0.98rem; }
+}
+
+@media (max-width: 639px) and (max-height: 700px) {
+  .cal-legend { display: none; }
+  .cal-day { min-height: 40px; }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Manage page
    ═══════════════════════════════════════════════════════════════ */
@@ -1453,7 +1568,15 @@ kbd {
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
   transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+
+/* Touch: held long enough to be picked up (manage.js). */
+.act.lifted {
+  z-index: 3;
+  transform: translate(-2px, -2px) scale(1.03);
+  box-shadow: 6px 6px 0 var(--ink);
 }
 
 .act.kind-C { background: var(--c-curs); }
@@ -1720,8 +1843,50 @@ kbd {
 
 .row-2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--sp-3);
+}
+
+.row-2 .input { min-width: 0; }
+
+/* Phones: modals become full-width sheets at the bottom, within thumb reach. */
+@media (max-width: 560px) {
+  .overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal {
+    max-width: none;
+    max-height: 94vh;
+    max-height: 94dvh;
+    border-bottom: 0;
+    border-radius: var(--r) var(--r) 0 0;
+    box-shadow: 0 -6px 0 var(--ink);
+    transform: translateY(40px);
+    overscroll-behavior: contain;
+  }
+
+  .modal-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  /* Save / Cancel stay in view however long the form is. */
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0 calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4));
+    padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom));
+    background: var(--card);
+    border-top: var(--bw-thin) solid var(--ink);
+  }
+
+  .row-2 { gap: var(--sp-2); }
+
+  .input[type="date"] { padding: 0 var(--sp-2); }
 }
 
 /* Segmented radio for week type */
@@ -1858,9 +2023,26 @@ kbd {
   .course-time { font-size: 0.82rem; }
   .datenav { grid-template-columns: 42px 1fr auto 42px; }
   .btn-icon { width: 42px; }
-  .cal-grid { gap: 3px; }
-  .cal-day { min-height: 46px; }
-  .cal-preview-list li { grid-template-columns: 88px 1fr; }
+  .cal-preview-list li { grid-template-columns: 76px 1fr; }
+}
+
+/* Phones: three days at a time, snapping to whole days when swiped. */
+@media (max-width: 640px) {
+  .manage { padding: var(--sp-3) var(--sp-3) var(--sp-8); gap: var(--sp-3); }
+  .wgrid { grid-template-columns: 46px repeat(7, minmax(94px, 1fr)); grid-auto-rows: 56px; }
+  .grid-wrap { scroll-snap-type: x proximity; scroll-padding-left: 46px; min-height: 320px; }
+  .g-day { scroll-snap-align: start; }
+  .g-time { font-size: 0.68rem; }
+  .act { padding: 5px 6px; }
+  .manage-toolbar .seg { width: 100%; }
+  .manage-toolbar .seg-btn { flex: 1; justify-content: center; padding: 0 var(--sp-2); }
+}
+
+.touch-only { display: none; }
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-only { display: inline; }
+  .mouse-only { display: none; }
 }
 
 @media (min-width: 900px) {
@@ -2614,6 +2796,25 @@ kbd {
 
 @media (max-width: 480px) {
   .hide-narrow { display: none; }
+
+  /* Brand + up to five buttons on one row. */
+  .topbar { gap: var(--sp-2); }
+  .topbar .brand { padding: 5px 10px; font-size: 0.98rem; }
+  .topbar-actions { gap: 6px; }
+  .topbar-actions .btn { min-height: 40px; }
+  .topbar-actions .btn-icon,
+  .topbar-actions .btn:has(> .hide-narrow) { width: 40px; padding: 0; }
+}
+
+/* Keyboard shortcuts mean nothing on a touch screen. */
+@media (hover: none) and (pointer: coarse) {
+  .kbd-hints { display: none; }
+}
+
+/* iOS zooms into any field with text under 16px when it gets focus. */
+@media (max-width: 640px) {
+  .input-sm,
+  .select-sm { font-size: 16px; }
 }
 
 .viewing-banner {

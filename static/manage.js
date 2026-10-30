@@ -24,6 +24,7 @@
     const LEVEL_LABELS = { full: 'Complet', busy: 'Doar ocupat', hidden: 'Ascuns' };
     const DEFAULT_HOUR_START = 7;
     const DEFAULT_HOUR_END = 22;
+    const LONG_PRESS_MS = 350;      // touch: hold a card this long to pick it up
 
     const pad = (n) => String(n).padStart(2, '0');
 
@@ -387,26 +388,51 @@
         }
 
         // ── Drag & drop (pointer events) ────────────────────
-        if (draggable) card.style.touchAction = 'none';
+        // Mouse: drag right away.  Touch: a swipe scrolls the grid as usual;
+        // holding the card still for a moment lifts it, then it follows the finger.
         card.addEventListener('pointerdown', (e) => {
             if (e.target.classList.contains('act-del')) return;
             if (!draggable) return;
-            e.preventDefault();
+            const touch = e.pointerType === 'touch';
+            if (!touch) e.preventDefault();
             const rect = card.getBoundingClientRect();
             dragState = {
-                act, card, ghost: null,
-                startX: e.clientX, startY: e.clientY,
+                act, card, ghost: null, touch, armed: !touch, timer: null,
+                startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY,
                 offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top,
                 hasMoved: false, cardWidth: rect.width, cardHeight: rect.height,
             };
-            card.setPointerCapture(e.pointerId);
+            if (touch) {
+                const state = dragState;
+                state.timer = setTimeout(() => {
+                    if (dragState !== state) return;
+                    state.armed = true;
+                    card.classList.add('lifted');
+                    if (navigator.vibrate) navigator.vibrate(12);
+                }, LONG_PRESS_MS);
+            } else {
+                card.setPointerCapture(e.pointerId);
+            }
         });
+
+        // Once a card is lifted, keep the page from scrolling under the finger.
+        card.addEventListener('touchmove', (e) => {
+            if (dragState && dragState.card === card && dragState.armed) e.preventDefault();
+        }, { passive: false });
+        card.addEventListener('contextmenu', (e) => { if (draggable) e.preventDefault(); });
 
         card.addEventListener('pointermove', (e) => {
             if (!dragState || dragState.card !== card) return;
             const dx = e.clientX - dragState.startX;
             const dy = e.clientY - dragState.startY;
             if (!dragState.hasMoved && Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+            if (!dragState.armed) {
+                // Moved before the long press: it's a scroll, not a drag.
+                endDrag(card);
+                return;
+            }
+            dragState.lastX = e.clientX;
+            dragState.lastY = e.clientY;
             if (!dragState.hasMoved) {
                 dragState.hasMoved = true;
                 const ghost = card.cloneNode(true);
@@ -417,6 +443,7 @@
                 document.body.appendChild(ghost);
                 dragState.ghost = ghost;
                 card.classList.add('dragging');
+                requestAnimationFrame(edgeScroll);
             }
             dragState.ghost.style.left = (e.clientX - dragState.offsetX) + 'px';
             dragState.ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
@@ -428,24 +455,18 @@
             if (!draggable) { openEditModal(act); return; }
             if (!dragState || dragState.card !== card) return;
             const wasDrag = dragState.hasMoved;
+            const dragged = dragState.act;
+            endDrag(card, true);
             if (wasDrag) {
-                if (dragState.ghost) dragState.ghost.remove();
-                card.classList.remove('dragging');
-                clearDropHighlights();
                 const target = getDropTarget(e.clientX, e.clientY);
-                if (target) await handleDrop(dragState.act, target);
+                if (target) await handleDrop(dragged, target);
             }
             dragState = null;
             if (!wasDrag) openEditModal(act);
         });
 
         card.addEventListener('pointercancel', () => {
-            if (dragState && dragState.card === card) {
-                if (dragState.ghost) dragState.ghost.remove();
-                card.classList.remove('dragging');
-                clearDropHighlights();
-                dragState = null;
-            }
+            if (dragState && dragState.card === card) endDrag(card);
         });
 
         card.addEventListener('keydown', (e) => {
@@ -459,6 +480,30 @@
         });
 
         targetCell.appendChild(card);
+    }
+
+    /** Drop the ghost and highlights; *keepState* while the drop is still being saved. */
+    function endDrag(card, keepState = false) {
+        if (!dragState) return;
+        clearTimeout(dragState.timer);
+        if (dragState.ghost) dragState.ghost.remove();
+        card.classList.remove('dragging', 'lifted');
+        clearDropHighlights();
+        if (!keepState) dragState = null;
+    }
+
+    /** While a card is dragged near the edge of the grid, scroll the grid that way. */
+    function edgeScroll() {
+        if (!dragState || !dragState.ghost || !gridWrap) return;
+        const r = gridWrap.getBoundingClientRect();
+        const EDGE = 36, STEP = 9;
+        const dx = dragState.lastX > r.right - EDGE ? STEP : dragState.lastX < r.left + EDGE + 46 ? -STEP : 0;
+        const dy = dragState.lastY > r.bottom - EDGE ? STEP : dragState.lastY < r.top + EDGE + 40 ? -STEP : 0;
+        if (dx || dy) {
+            gridWrap.scrollBy(dx, dy);
+            highlightDropTarget(dragState.lastX, dragState.lastY);
+        }
+        requestAnimationFrame(edgeScroll);
     }
 
     function highlightDropTarget(x, y) {
@@ -969,7 +1014,15 @@
 
     // ── Init ────────────────────────────────────────────────────
     fetchAll().then(() => {
-        if (gridWrap) gridWrap.scrollTop = 0;
+        if (gridWrap) {
+            gridWrap.scrollTop = 0;
+            // Narrow screens show only a few days: start at today's column.
+            if (gridWrap.scrollWidth > gridWrap.clientWidth) {
+                const head = grid.querySelectorAll('.g-day')[(new Date().getDay() + 6) % 7];
+                const corner = grid.querySelector('.g-corner');
+                if (head && corner) gridWrap.scrollLeft = head.offsetLeft - corner.offsetWidth;
+            }
+        }
 
         // Pre-fill from the daily view's "Adaugă" links and the free-time finder.
         const q = new URLSearchParams(location.search);

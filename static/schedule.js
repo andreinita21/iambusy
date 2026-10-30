@@ -120,6 +120,9 @@
     const dayCache = new Map();       // iso → day summary from /api/days
     let calOpen = false;
     let lastFocus = null;
+    // Touch screens fire mouseenter on tap; the preview follows taps there instead.
+    const canHover = window.matchMedia('(hover: hover)').matches;
+    const sheetMode = window.matchMedia('(max-width: 639px)');
 
     const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const fromIso = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
@@ -166,14 +169,25 @@
         return bar;
     }
 
-    async function renderCalendar() {
+    let renderSeq = 0;
+
+    /** *direction*: 1 / -1 slides the new month in from the right / left. */
+    async function renderCalendar(direction = 0) {
         if (!calGrid) return;
+        const seq = ++renderSeq;
         const { start, end } = gridRange(viewYear, viewMonth);
         calMonth.textContent = `${MONTHS[viewMonth]} ${viewYear}`;
+        updateTodayButton();
         calSub.textContent = 'se încarcă…';
         await loadRange(start, end);
+        if (seq !== renderSeq) return; // a newer month was asked for meanwhile
 
         calGrid.innerHTML = '';
+        calGrid.classList.remove('from-left', 'from-right');
+        if (direction) {
+            void calGrid.offsetWidth; // restart the animation
+            calGrid.classList.add(direction > 0 ? 'from-right' : 'from-left');
+        }
         calGrid.appendChild(Object.assign(document.createElement('div'), { className: 'cal-dow', textContent: '#' }));
         DOW.forEach(n => {
             const h = document.createElement('div');
@@ -236,13 +250,22 @@
                     if (selectedIso === key) { window.location.href = `?date=${key}`; return; }
                     selectDay(key);
                 });
-                btn.addEventListener('mouseenter', () => previewDay(key));
-                btn.addEventListener('mouseleave', () => previewDay(selectedIso));
+                if (canHover) {
+                    btn.addEventListener('mouseenter', () => previewDay(key));
+                    btn.addEventListener('mouseleave', () => previewDay(selectedIso));
+                }
                 calGrid.appendChild(btn);
             }
         }
         calSub.textContent = busyDays ? `${busyDays} zile cu activități` : 'nicio activitate';
         previewDay(selectedIso);
+    }
+
+    /** "Azi" only when it would change something (saves room on small phones). */
+    function updateTodayButton() {
+        const t = fromIso(todayIso);
+        calTodayBtn.hidden = viewYear === t.getFullYear() && viewMonth === t.getMonth()
+            && selectedIso === todayIso;
     }
 
     function selectDay(key) {
@@ -253,6 +276,9 @@
             if (on) b.setAttribute('aria-selected', 'true'); else b.removeAttribute('aria-selected');
         });
         previewDay(key);
+        updateTodayButton();
+        const body = pvList.parentElement;
+        if (body) body.scrollTop = 0;
     }
 
     function previewDay(key) {
@@ -383,17 +409,59 @@
         if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
     }
 
+    function changeMonth(delta) {
+        viewMonth += delta;
+        if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+        if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+        renderCalendar(delta);
+    }
+
     if (cal) {
         dateDisplay.addEventListener('click', () => (calOpen ? closeCalendar() : openCalendar()));
         calBackdrop.addEventListener('click', closeCalendar);
-        calPrev.addEventListener('click', () => {
-            viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; }
-            renderCalendar();
-        });
-        calNext.addEventListener('click', () => {
-            viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; }
-            renderCalendar();
-        });
+        document.getElementById('cal-close').addEventListener('click', closeCalendar);
+        calPrev.addEventListener('click', () => changeMonth(-1));
+        calNext.addEventListener('click', () => changeMonth(1));
+
+        // Swipe sideways on the month to change it.
+        let sx = null, sy = null;
+        calGrid.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) { sx = null; return; }
+            sx = e.touches[0].clientX;
+            sy = e.touches[0].clientY;
+        }, { passive: true });
+        calGrid.addEventListener('touchend', (e) => {
+            if (sx === null) return;
+            const dx = e.changedTouches[0].clientX - sx;
+            const dy = e.changedTouches[0].clientY - sy;
+            sx = sy = null;
+            if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+            changeMonth(dx < 0 ? 1 : -1);
+        }, { passive: true });
+
+        // On phones the sheet's top bar can be dragged down to close it.
+        const calTop = document.getElementById('cal-top');
+        let dragStart = null, dragDy = 0;
+        calTop.addEventListener('touchstart', (e) => {
+            if (!sheetMode.matches || e.touches.length !== 1 || e.target.closest('button')) return;
+            dragStart = e.touches[0].clientY;
+            dragDy = 0;
+            cal.classList.add('dragging');
+        }, { passive: true });
+        calTop.addEventListener('touchmove', (e) => {
+            if (dragStart === null) return;
+            dragDy = Math.max(0, e.touches[0].clientY - dragStart);
+            cal.style.transform = `translate(-50%, ${dragDy}px)`;
+        }, { passive: true });
+        const endDrag = () => {
+            if (dragStart === null) return;
+            dragStart = null;
+            cal.classList.remove('dragging');
+            cal.style.transform = ''; // animates from where the finger left it
+            if (dragDy > 80) closeCalendar();
+        };
+        calTop.addEventListener('touchend', endDrag);
+        calTop.addEventListener('touchcancel', endDrag);
         calTodayBtn.addEventListener('click', () => {
             const t = fromIso(todayIso);
             viewYear = t.getFullYear(); viewMonth = t.getMonth();
