@@ -18,6 +18,7 @@
 
 -   **Home page** (`/` when logged out): what the app does, with sign-in and "Am o invitație" buttons. Logged-in users get their calendar at the same address.
 -   **Legal pages**: privacy policy (`/confidentialitate`, GDPR) and terms (`/termeni`), linked in every footer and on the sign-up form. Operator name and contact come from `OPERATOR_NAME` / `CONTACT_EMAIL`; bump `public.LEGAL_UPDATED` whenever their text changes.
+-   **Forgotten password**: an optional email on the account (attached only after clicking a confirmation link) lets people reset their password from `/forgot`. Emails go out through Brevo's API (`mailer.py`, `BREVO_API_KEY`) on a background thread; the page answers the same whether or not the account exists. Reset links are single-use, valid for an hour, stored only as SHA-256, replaced by newer ones and cancelled by a password change; resetting logs every device out and sends a notice. Rate limits: 5 requests / 15 min per IP, 3 emails / hour per account.
 -   **Your data**: the account page has *Descarcă datele mele* (everything stored about you as JSON, without password / token / PIN hashes) and *Șterge-mi contul definitiv* (password required; the last active admin can't delete themselves).
 -   **One address**: with `SITE_URL` set, any other host name and plain `http://` get a 301 (308 for form posts) to it, and copied links are built from it. Requests by IP or to `localhost` are left alone.
 -   **Search & previews**: `robots.txt`, `sitemap.xml`, canonical links, Open Graph / Twitter cards (share links and friend links get their own titles; PIN-protected links reveal nothing), JSON-LD, a web app manifest with PNG / maskable icons and `favicon.ico`.
@@ -107,6 +108,8 @@ A full-featured management page (`/manage`) lets you take control of your schedu
 ```
 iambusy/
 ├── app.py                    # Flask HTTP layer + REST API, security headers
+├── recovery.py               # Email on the account, forgot / reset password
+├── mailer.py                 # Outgoing email through the Brevo API
 ├── public.py                 # Home page, legal pages, robots/sitemap/manifest, error pages, canonical host
 ├── auth.py                   # Login, registration, sessions, CSRF, rate limits, admin
 ├── social.py                 # Friends, groups, privacy rules, invites, friend links, free time
@@ -260,6 +263,7 @@ Everything lives in `schedule_config.py` (created by `setup.sh`, ignored by git)
 | `TRUSTED_PROXIES`      | Networks allowed to report the visitor IP (`CF-Connecting-IP`) and scheme (`X-Forwarded-Proto`) |
 | `SITE_URL`             | The public address, e.g. `https://www.iambusy.ro` — canonical redirect + copied links (`""` = off) |
 | `OPERATOR_NAME`, `CONTACT_EMAIL` | Who runs the site, shown in the footer and the legal pages |
+| `BREVO_API_KEY`, `MAIL_FROM` | Brevo API key and sender for password-reset emails (`MAIL_FROM` defaults to `noreply@<domain>`) |
 
 Restart the app after editing it. Schedules are stored in `schedule.db` and edited through `/manage`.
 

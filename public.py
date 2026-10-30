@@ -62,6 +62,14 @@ def configure(*, site_url: str, operator_name: str, contact_email: str,
     )
 
 
+def default_sender() -> str:
+    """``noreply@<domain>`` of the public address (``""`` when it isn't set)."""
+    host = _settings["host"].split(":")[0]
+    if host.startswith("www."):
+        host = host[4:]
+    return f"noreply@{host}" if host else ""
+
+
 def site_url() -> str:
     """Public base URL without a trailing slash (the request's own when unset)."""
     return _settings["site_url"] or request.host_url.rstrip("/")

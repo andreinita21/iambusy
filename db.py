@@ -285,9 +285,27 @@ def _migrate(conn) -> None:
     ):
         if name not in cols:
             conn.execute(f"ALTER TABLE activities ADD COLUMN {name} {decl}")
-    if "invited_by" not in _columns(conn, "users"):
+    user_cols = _columns(conn, "users")
+    if "invited_by" not in user_cols:
         conn.execute(
             "ALTER TABLE users ADD COLUMN invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+    if "email" not in user_cols:
+        # Optional, only ever set after the owner clicked a confirmation link.
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) "
+                 "WHERE email IS NOT NULL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS email_tokens (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            purpose     TEXT    NOT NULL CHECK (purpose IN ('verify', 'reset')),
+            token_hash  TEXT    NOT NULL UNIQUE,
+            email       TEXT    NOT NULL,
+            created_at  INTEGER NOT NULL,
+            expires_at  INTEGER NOT NULL,
+            used_at     INTEGER
+        )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_email_tokens_user ON email_tokens(user_id, purpose)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(user_id, date)")
 
     for row in conn.execute(
@@ -451,7 +469,8 @@ def list_users() -> list[dict]:
 
 def update_user(user_id: int, **fields) -> None:
     """Update whitelisted columns of a user."""
-    allowed = {"display_name", "password_hash", "is_active", "week1_start", "last_login_at"}
+    allowed = {"display_name", "password_hash", "is_active", "week1_start", "last_login_at",
+               "email"}
     unknown = set(fields) - allowed
     if unknown:
         raise ValueError(f"Cannot update {sorted(unknown)}")
@@ -635,6 +654,7 @@ def purge_expired() -> None:
     """Drop rate-limit records older than a day and expired sessions (run daily)."""
     now = _now()
     conn = _get_conn()
+    conn.execute("DELETE FROM email_tokens WHERE expires_at <= ?", (now - 86400,))
     conn.execute("DELETE FROM auth_attempts WHERE ts < ?", (now - 86400,))
     conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
     conn.commit()
@@ -873,3 +893,83 @@ def update_activity(
     conn.commit()
     conn.close()
     return cur.rowcount > 0
+
+
+# ═══════════════════════════════════════════════ Email tokens ══
+
+def get_user_by_email(email: str) -> Optional[dict]:
+    conn = _get_conn()
+    row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_email_token(user_id: int, purpose: str, token_hash: str, email: str,
+                       lifetime: int) -> None:
+    """A new link replaces any older unused one of the same kind."""
+    now = _now()
+    conn = _get_conn()
+    conn.execute("DELETE FROM email_tokens WHERE user_id = ? AND purpose = ? AND used_at IS NULL",
+                 (user_id, purpose))
+    conn.execute(
+        "INSERT INTO email_tokens (user_id, purpose, token_hash, email, created_at, expires_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)", (user_id, purpose, token_hash, email, now, now + lifetime))
+    conn.commit()
+    conn.close()
+
+
+def get_email_token(purpose: str, token_hash: str) -> Optional[dict]:
+    """The token and its user, if it is unused, unexpired and the account active."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT t.*, u.username, u.display_name, u.email AS current_email FROM email_tokens t "
+        "JOIN users u ON u.id = t.user_id "
+        "WHERE t.purpose = ? AND t.token_hash = ? AND t.used_at IS NULL AND t.expires_at > ? "
+        "AND u.is_active = 1", (purpose, token_hash, _now())).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def use_email_token(token_id: int) -> bool:
+    """Mark a token used; ``False`` if someone else got there first."""
+    conn = _get_conn()
+    cur = conn.execute("UPDATE email_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL",
+                       (_now(), token_id))
+    conn.commit()
+    conn.close()
+    return cur.rowcount == 1
+
+
+def drop_email_tokens(user_id: int, purpose: Optional[str] = None) -> None:
+    conn = _get_conn()
+    if purpose:
+        conn.execute("DELETE FROM email_tokens WHERE user_id = ? AND purpose = ?",
+                     (user_id, purpose))
+    else:
+        conn.execute("DELETE FROM email_tokens WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def set_verified_email(user_id: int, email: str) -> bool:
+    """Attach a confirmed address; ``False`` if another account already has it."""
+    conn = _get_conn()
+    try:
+        conn.execute("UPDATE users SET email = ? WHERE id = ?", (email, user_id))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+
+def pending_email(user_id: int) -> str:
+    """An address still waiting for its confirmation click, if any."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT email FROM email_tokens WHERE user_id = ? AND purpose = 'verify' "
+        "AND used_at IS NULL AND expires_at > ? ORDER BY id DESC LIMIT 1",
+        (user_id, _now())).fetchone()
+    conn.close()
+    return row["email"] if row else ""

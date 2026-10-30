@@ -50,3 +50,10 @@ SITE_URL: str = ""  # e.g. "https://www.iambusy.ro"
 # named, with a way to reach them) and in the page footer.
 OPERATOR_NAME: str = ""
 CONTACT_EMAIL: str = ""
+
+# ──────────────────────── email (password reset) ──
+# Transactional email through Brevo (https://www.brevo.com): an API key from
+# SMTP & API → API Keys, and a sender on a domain authenticated in Brevo.
+# Without a key the "forgot password" page tells people to ask the admin.
+BREVO_API_KEY: str = ""
+MAIL_FROM: str = ""  # default: noreply@<domain of SITE_URL>

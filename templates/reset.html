@@ -1,0 +1,50 @@
+{% extends "auth_base.html" %}
+{% block title %}Parolă nouă{% endblock %}
+{% block meta %}
+    <meta name="robots" content="noindex, nofollow">
+{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    {% if valid %}
+    <header class="auth-head auth-head-lime">
+        <span class="tag tag-ink">@{{ username }}</span>
+        <h1 class="auth-title" id="auth-title">Alege o parolă nouă</h1>
+        <p class="auth-lead">După schimbare, toate dispozitivele vor fi deconectate.</p>
+    </header>
+    <form class="auth-form" method="post" action="" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="username" value="{{ username }}" autocomplete="username" hidden>
+        <div class="field">
+            <label for="password">Parola nouă</label>
+            <div class="pw-wrap">
+                <input class="input" type="password" id="password" name="password" autocomplete="new-password"
+                    minlength="10" maxlength="128" required autofocus data-strength="pw-meter">
+                <button type="button" class="pw-toggle" data-target="password" aria-pressed="false"
+                    aria-label="Arată parola">Arată</button>
+            </div>
+            <div class="pw-meter" id="pw-meter" data-level="0" aria-hidden="true">
+                <i></i><i></i><i></i><i></i>
+                <span class="pw-meter-label">minimum 10 caractere</span>
+            </div>
+        </div>
+        <div class="field">
+            <label for="password_confirm">Repetă parola</label>
+            <input class="input" type="password" id="password_confirm" name="password_confirm"
+                autocomplete="new-password" maxlength="128" required data-match="password">
+            <span class="hint match-hint" hidden>Parolele nu coincid încă.</span>
+        </div>
+        <button type="submit" class="btn btn-accent btn-block">Schimbă parola</button>
+    </form>
+    {% else %}
+    <header class="auth-head">
+        <span class="tag tag-ink">Resetare parolă</span>
+        <h1 class="auth-title" id="auth-title">Link invalid</h1>
+        <p class="auth-lead">Linkul a expirat, a fost deja folosit sau a fost înlocuit de unul mai nou.</p>
+    </header>
+    <div class="auth-form">
+        <a class="btn btn-primary btn-block" href="/forgot">Cere un link nou</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

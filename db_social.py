@@ -917,7 +917,7 @@ def export_user_data(user_id: int) -> dict:
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
     user = dict(conn.execute(
-        "SELECT u.username, u.display_name, u.week1_start, u.is_admin, u.created_at, "
+        "SELECT u.username, u.display_name, u.email, u.week1_start, u.is_admin, u.created_at, "
         "u.last_login_at, inviter.username AS invited_by "
         "FROM users u LEFT JOIN users inviter ON inviter.id = u.invited_by WHERE u.id = ?",
         (user_id,)).fetchone())

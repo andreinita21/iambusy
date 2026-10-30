@@ -7,7 +7,7 @@
     {% block meta %}
     <meta name="robots" content="noindex, nofollow">
     {% endblock %}
-    <meta name="referrer" content="same-origin">
+    {% block referrer %}<meta name="referrer" content="same-origin">{% endblock %}
     <meta name="theme-color" content="#17171c">
     <title>{% block full_title %}IamBusy — {% block title %}{% endblock %}{% endblock %}</title>
 

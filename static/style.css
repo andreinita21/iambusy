@@ -3776,3 +3776,17 @@ kbd {
 .panel-card > .btn[download] {
   align-self: flex-start;
 }
+
+.forgot-link {
+  align-self: flex-end;
+  margin-top: calc(-1 * var(--sp-2));
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.forgot-link:hover {
+  color: var(--ink);
+}

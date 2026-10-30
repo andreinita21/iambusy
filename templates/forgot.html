@@ -1,0 +1,45 @@
+{% extends "auth_base.html" %}
+{% block title %}Am uitat parola{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    <header class="auth-head auth-head-yellow">
+        <span class="tag tag-ink">Recuperare cont</span>
+        <h1 class="auth-title" id="auth-title">Ai uitat parola?</h1>
+        <p class="auth-lead">{% if sent %}Verifică-ți emailul.{% else %}Îți trimitem un link pe emailul
+            legat de cont.{% endif %}</p>
+    </header>
+
+    {% if not enabled %}
+    <div class="auth-form">
+        <p class="hint">Resetarea prin email nu este disponibilă acum. Cere administratorului o parolă
+            temporară{% if site.contact %} — <a href="mailto:{{ site.contact }}">{{ site.contact }}</a>{% endif %}.</p>
+        <a class="btn btn-block" href="/login">Înapoi la autentificare</a>
+    </div>
+    {% elif sent %}
+    <div class="auth-form">
+        <div class="invite-ok">
+            <span class="flash-mark" aria-hidden="true">✓</span>
+            <span>Dacă există un cont cu o adresă de email confirmată pentru „{{ value }}”, am trimis acolo
+                un link de resetare. E valabil o oră.</span>
+        </div>
+        <p class="hint">N-a venit nimic în câteva minute? Verifică folderul Spam. Dacă n-ai adăugat niciodată
+            un email în cont, cere administratorului o parolă temporară.</p>
+        <a class="btn btn-block" href="/login">Înapoi la autentificare</a>
+    </div>
+    {% else %}
+    <form class="auth-form" method="post" action="/forgot" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+            <label for="login">Nume de utilizator sau email</label>
+            <input class="input" type="text" id="login" name="login" value="{{ value }}"
+                autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"
+                maxlength="254" required autofocus>
+            <span class="hint">Merge doar dacă ai adăugat și confirmat un email în pagina contului.</span>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Trimite linkul</button>
+    </form>
+    <p class="auth-foot">Ți-ai amintit? <a href="/login">Autentifică-te</a>.</p>
+    {% endif %}
+</section>
+{% endblock %}

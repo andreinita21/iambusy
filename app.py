@@ -35,6 +35,8 @@ TRUSTED_PROXIES = getattr(config, "TRUSTED_PROXIES", [])
 SITE_URL = getattr(config, "SITE_URL", "")
 OPERATOR_NAME = getattr(config, "OPERATOR_NAME", "")
 CONTACT_EMAIL = getattr(config, "CONTACT_EMAIL", "")
+BREVO_API_KEY = getattr(config, "BREVO_API_KEY", "")
+MAIL_FROM = getattr(config, "MAIL_FROM", "")
 
 from schedule_engine import DAY_DISPLAY, DAYS, find_conflicts, is_odd_week
 from db import (
@@ -55,7 +57,9 @@ from calendar_data import (
 )
 import auth
 from auth import login_required
+import mailer
 import public
+import recovery
 import social
 import sharing
 
@@ -81,6 +85,8 @@ auth.configure(
 )
 public.configure(site_url=SITE_URL, operator_name=OPERATOR_NAME, contact_email=CONTACT_EMAIL,
                  session_days=SESSION_DAYS, short_session_hours=SHORT_SESSION_HOURS)
+mailer.configure(api_key=BREVO_API_KEY, sender=MAIL_FROM or public.default_sender(),
+                 reply_to=CONTACT_EMAIL)
 social.configure(default_week1_start=DEFAULT_WEEK1_START)
 sharing.configure(default_week1_start=DEFAULT_WEEK1_START, cookie_secure=COOKIE_SECURE)
 
@@ -92,6 +98,7 @@ app.before_request(auth.load_current_user)
 app.before_request(auth.csrf_protect)
 app.register_blueprint(public.bp)
 app.register_blueprint(auth.bp)
+app.register_blueprint(recovery.bp)
 app.register_blueprint(social.bp)
 app.register_blueprint(sharing.bp)
 app.jinja_env.globals["csrf_token"] = auth.csrf_token

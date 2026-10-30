@@ -36,6 +36,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
 import db_social
+import mailer
 
 bp = Blueprint("auth", __name__)
 
@@ -335,7 +336,8 @@ def csrf_protect():
             return jsonify({"error": "Sesiune expirată — reîncarcă pagina.", "code": "csrf"}), 403
         flash("Formularul a expirat. Încearcă din nou.", "error")
         # Pages reachable without an account go back to themselves.
-        if request.endpoint in ("auth.login", "auth.register", "social.friend_link"):
+        if request.endpoint in ("auth.login", "auth.register", "social.friend_link",
+                                "recovery.forgot", "recovery.reset_password"):
             return redirect(request.path)
         if request.endpoint == "sharing.share_pin":
             return redirect(request.path.rsplit("/", 1)[0])
@@ -581,7 +583,8 @@ def _account_context():
         s["is_current"] = s["id"] == g.user["session_id"]
         s["last_seen_str"] = _fmt_ts(s["last_seen"])
         s["created_str"] = _fmt_ts(s["created_at"])
-    return {"user": g.user, "sessions": sessions, "session_days": _settings["session_days"]}
+    return {"user": g.user, "sessions": sessions, "session_days": _settings["session_days"],
+            "mail_enabled": mailer.enabled(), "pending_email": db.pending_email(g.user["id"])}
 
 
 @bp.route("/account")
@@ -632,6 +635,7 @@ def account_password():
         return redirect(url_for("auth.account"))
 
     db.update_user(g.user["id"], password_hash=hash_password(new))
+    db.drop_email_tokens(g.user["id"], "reset")
     dropped = db.delete_user_sessions(g.user["id"], except_session_id=g.user["session_id"])
     flash(f"Parolă schimbată. {dropped} alte dispozitive au fost deconectate.", "ok")
     return redirect(url_for("auth.account"))
@@ -803,6 +807,7 @@ def admin_reset_password(user_id):
         return redirect(url_for("auth.admin"))
     temp = "-".join(secrets.token_urlsafe(4) for _ in range(3))
     db.update_user(target["id"], password_hash=hash_password(temp))
+    db.drop_email_tokens(target["id"], "reset")
     db.delete_user_sessions(target["id"])
     db.clear_attempts(f"login-user:{target['username']}")
     # Rendered straight into this response and never stored: the temporary
