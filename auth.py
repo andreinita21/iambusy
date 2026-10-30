@@ -408,25 +408,32 @@ def login():
     next_url = safe_next(request.values.get("next"))
     username = ""
     if request.method == "POST":
-        username = normalize_username(request.form.get("username"))[:64]
+        username = normalize_username(request.form.get("username"))[:EMAIL_MAX]
         password = request.form.get("password") or ""
         remember = request.form.get("remember") == "1"
 
+        # Username or (confirmed) email address.  Limits are counted per account,
+        # so switching between the two doesn't buy an attacker extra tries.
+        if "@" in username:
+            user = db.get_user_by_email(normalize_email(username))
+        else:
+            user = db.get_user_by_username(username[:64]) if username else None
+        account = user["username"] if user else username
+
         ip = client_ip()
-        keys = {"pair": f"login:{ip}:{username}", "user": f"login-user:{username}",
+        keys = {"pair": f"login:{ip}:{account}", "user": f"login-user:{account}",
                 "ip": f"login-ip:{ip}"}
         if (_limited(keys["pair"], LIMIT_LOGIN_PAIR) or _limited(keys["ip"], LIMIT_LOGIN_IP)
-                or (_limited(keys["user"], LIMIT_LOGIN_USER) and not known_device(username))):
+                or (_limited(keys["user"], LIMIT_LOGIN_USER) and not known_device(account))):
             flash("Prea multe încercări. Așteaptă câteva minute și încearcă din nou.", "error")
             return render_template("login.html", username=username, next_url=next_url), 429
 
-        user = db.get_user_by_username(username) if username else None
         ok = verify_password(user["password_hash"] if user else _DUMMY_HASH, password)
         if not (user and ok and user["is_active"]):
             db.record_attempt(*keys.values())
             # Same message whether the account exists, is disabled or the
             # password is wrong — nothing to enumerate.
-            flash("Nume de utilizator sau parolă greșită.", "error")
+            flash("Date de autentificare greșite.", "error")
             return render_template("login.html", username=username, next_url=next_url), 401
 
         db.clear_attempts(keys["pair"], keys["user"])

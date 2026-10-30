@@ -32,6 +32,7 @@
 ## 🔐 Accounts & security
 
 -   **Sign-up**: open to anyone with a confirmed email (Cloudflare Turnstile on the form when configured). The admin panel can switch to invite-only in one click — then an invite code (single- or multi-use, optional expiry, revocable) or a friend link is needed.
+-   **Log in** with the username or the confirmed email address (rate limits count per account either way).
 -   **Stay signed in**: a device is remembered for 30 days after its last visit ("Ține-mă minte"); untick it on shared computers for a 12-hour session.
 -   **Account page** (`/account`): display name, week-1 date, password change, and a list of connected devices you can log out one by one.
 -   **Admin panel** (`/admin`): manage invite codes; disable / re-enable, log out, reset the password of, or delete accounts. The admin cannot read other people's schedules.
