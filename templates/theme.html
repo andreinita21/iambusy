@@ -12,7 +12,7 @@
 {% macro swatch_card(t, is_active) %}
 <button type="button" class="theme-card{{ ' is-active' if is_active }}" data-key="{{ t.key }}"
     aria-pressed="{{ 'true' if is_active else 'false' }}"
-    style="--tp:{{ t.colors.paper }};--tc:{{ t.colors.card }};--ti:{{ t.colors.ink }};--tm:{{ t.colors.muted }};--ta:{{ t.colors.yellow }};--tb:{{ t.colors.pink }};--tf:{{ t.colors.lime }};--t1:{{ t.colors.blue }};--t2:{{ t.colors.orange }};--t3:{{ t.colors.purple }}">
+    style="--tp:{{ t.colors.paper }};--tc:{{ t.colors.card }};--ti:{{ t.colors.ink }};--tl:{{ t.colors.line }};--tm:{{ t.colors.muted }};--ta:{{ t.colors.yellow }};--tb:{{ t.colors.pink }};--tf:{{ t.colors.lime }};--t1:{{ t.colors.blue }};--t2:{{ t.colors.orange }};--t3:{{ t.colors.purple }}">
     <span class="tc-mock" aria-hidden="true">
         <span class="tc-bar"><i></i><i></i><i></i></span>
         <span class="tc-row"><b></b><span><i></i><i></i></span></span>

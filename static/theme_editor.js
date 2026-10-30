@@ -41,6 +41,7 @@
             '--card-2': derived.card_2 || mix(c.card, c.paper, 0.5),
             '--ink': c.ink,
             '--ink-2': derived.ink_2 || mix(c.ink, c.paper, 0.14),
+            '--line': c.line || c.ink,
             '--muted': c.muted,
             '--line-soft': `rgba(${r}, ${g}, ${b}, ${dark ? 0.13 : 0.14})`,
             '--on-accent': c.on_accent,

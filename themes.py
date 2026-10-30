@@ -1,7 +1,7 @@
 """
 Colour themes: every account can pick how the site looks for them.
 
-* A theme is 13 colours (``KEYS``); the in-between shades (second background,
+* A theme is 14 colours (``KEYS``); the in-between shades (second background,
   second text, hairlines…) are derived from them, so a theme made from
   scratch always looks finished.
 * Presets are inspired by well-known terminal / editor themes.  Any of them
@@ -30,7 +30,8 @@ HEX_RE = re.compile(r"^#[0-9a-f]{6}$")
 KEYS = (
     ("paper", "Fundal", "fundalul paginii"),
     ("card", "Carduri", "panouri, butoane, câmpuri"),
-    ("ink", "Text și contururi", "textul, chenarele și umbrele"),
+    ("ink", "Text", "textul principal"),
+    ("line", "Contururi", "chenarele și umbrele"),
     ("muted", "Text secundar", "detalii, explicații"),
     ("on_accent", "Text pe culori", "scrisul de pe butoanele și etichetele colorate"),
     ("yellow", "Principal", "butoanele principale, ziua de azi, sigla"),
@@ -46,9 +47,10 @@ KEY_NAMES = tuple(k for k, _, _ in KEYS)
 
 
 def _p(paper, card, ink, muted, on_accent, yellow, pink, lime, blue, orange, purple, cyan, red,
-       **derived):
-    colors = dict(paper=paper, card=card, ink=ink, muted=muted, on_accent=on_accent, yellow=yellow,
-                  pink=pink, lime=lime, blue=blue, orange=orange, purple=purple, cyan=cyan, red=red)
+       line=None, **derived):
+    colors = dict(paper=paper, card=card, ink=ink, line=line or ink, muted=muted,
+                  on_accent=on_accent, yellow=yellow, pink=pink, lime=lime, blue=blue,
+                  orange=orange, purple=purple, cyan=cyan, red=red)
     return {"colors": colors, "derived": derived}
 
 
@@ -96,8 +98,8 @@ PRESETS = {
         "#ffe4f1", "#fff5fa", "#5a0f36", "#9c4f76", "#4a0a2c", "#ff9ccf", "#ff5fa8", "#ffd0e7",
         "#d9a6ff", "#ffa3c4", "#e7a3f0", "#f7b3d9", "#ff4d8d")),
     "amethyst": ("Ametist (tot mov)", _p(
-        "#160e22", "#251838", "#f1e6ff", "#b39cd4", "#1a0b2e", "#c084fc", "#e879f9", "#ddd6fe",
-        "#8f9bfb", "#f5a3e0", "#a78bfa", "#bcc6ff", "#f7609c",
+        "#160e22", "#251838", "#f1e6ff", "#b39cd4", "#1a0b2e", "#c084fc", "#af99ff", "#ddd6fe",
+        "#8f9bfb", "#f5a3e0", "#e879f9", "#bcc6ff", "#f7609c", line="#7c4dff",
         paper_2="#1e1430", card_2="#1d1330", ink_2="#d8c8f0")),
 }
 DEFAULT_PRESET = "iambusy-dark"
@@ -127,12 +129,15 @@ def luminance(hex_color: str) -> float:
 
 
 def clean_colors(raw) -> dict | None:
-    """All 13 colours as lowercase ``#rrggbb``, or ``None`` if any is missing / invalid."""
+    """All colours as lowercase ``#rrggbb``, or ``None`` if any is missing / invalid.
+
+    ``line`` came later: themes saved before it existed outline in the text colour.
+    """
     if not isinstance(raw, dict):
         return None
     out = {}
     for key in KEY_NAMES:
-        value = str(raw.get(key) or "").strip().lower()
+        value = str(raw.get(key) or (raw.get("ink") if key == "line" else "") or "").strip().lower()
         if not HEX_RE.match(value):
             return None
         out[key] = value
@@ -153,6 +158,7 @@ def css_vars(colors: dict, derived: dict = None) -> dict:
         "--card-2": derived.get("card_2") or mix(c["card"], c["paper"], 0.5),
         "--ink": c["ink"],
         "--ink-2": derived.get("ink_2") or mix(c["ink"], c["paper"], 0.14),
+        "--line": c.get("line") or c["ink"],
         "--muted": c["muted"],
         "--line-soft": f"rgba({r}, {g_}, {b}, {0.13 if dark else 0.14})",
         "--on-accent": c["on_accent"],
