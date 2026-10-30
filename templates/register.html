@@ -58,6 +58,14 @@
         </div>
 
         <div class="field">
+            <label for="email">Email</label>
+            <input class="input" type="email" id="email" name="email" value="{{ form.email }}"
+                autocomplete="email" autocapitalize="none" maxlength="254" required>
+            <span class="hint">Îți trimitem un link de confirmare. Îl folosim pentru resetarea parolei și pentru
+                notificări (cereri de prietenie, invitații) pe care le poți opri oricând.</span>
+        </div>
+
+        <div class="field">
             <label for="password">Parolă</label>
             <div class="pw-wrap">
                 <input class="input" type="password" id="password" name="password" autocomplete="new-password"

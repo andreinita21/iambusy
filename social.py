@@ -19,6 +19,7 @@ import secrets
 import sqlite3
 import time
 from datetime import date, datetime, timedelta
+from typing import Optional
 
 from flask import (
     Blueprint, abort, flash, g, jsonify, redirect, render_template, request, url_for,
@@ -26,6 +27,7 @@ from flask import (
 
 import db
 import db_social
+import emails
 from auth import (
     absolute_url, client_ip, friend_signup_enabled, login_required, normalize_friend_code,
     normalize_username, _limited,
@@ -35,6 +37,7 @@ from calendar_data import (
 )
 from schedule_engine import (
     DAY_DISPLAY, DAYS, find_conflicts, format_date_ro, free_between, merge_intervals, minutes_to_hhmm,
+    when_label,
 )
 from visibility import DEFAULT_LEVEL, LEVEL_LABELS, LEVELS, friend_level
 
@@ -50,7 +53,6 @@ MAX_REQUESTS_PER_DAY = 30
 LIMIT_SEARCH = (40, 10 * 60)        # exact-username lookups per user
 LIMIT_FRIEND_LINK_IP = (20, 60 * 60)
 MAX_BUSY_PEOPLE = 10
-WEEK_LABELS = {"both": "", "odd": "săpt. impară", "even": "săpt. pară"}
 
 
 def configure(*, default_week1_start) -> None:
@@ -84,22 +86,6 @@ def _int(raw, default=None):
         return int(raw)
     except (TypeError, ValueError):
         return default
-
-
-def when_label(act: dict) -> str:
-    """``Vineri, 7 noiembrie · 18:00–20:00`` or ``Luni · 10:00–12:00 · săpt. impară``."""
-    times = f"{act['start_time']}–{act['end_time']}"
-    if act.get("date"):
-        d = date.fromisoformat(act["date"])
-        return f"{DAY_DISPLAY[DAYS[d.weekday()]]}, {format_date_ro(d, long=True)} {d.year} · {times}"
-    parts = [f"În fiecare {DAY_DISPLAY[act['day']].lower()}", times]
-    if WEEK_LABELS.get(act.get("week_type")):
-        parts.append(WEEK_LABELS[act["week_type"]])
-    if act.get("valid_from") or act.get("valid_until"):
-        start = format_date_ro(date.fromisoformat(act["valid_from"])) if act.get("valid_from") else "…"
-        end = format_date_ro(date.fromisoformat(act["valid_until"])) if act.get("valid_until") else "…"
-        parts.append(f"{start} – {end}")
-    return " · ".join(parts)
 
 
 def fmt_ts(ts) -> str:
@@ -268,6 +254,10 @@ def friend_request():
         flash("Ai trimis prea multe cereri azi. Încearcă mâine.", "error")
         return redirect(url_for("social.friends"))
     outcome = db_social.send_friend_request(me["id"], other["id"])
+    if outcome == "sent":
+        emails.friend_request(me, other["id"])
+    elif outcome == "accepted":  # they had asked first
+        emails.friend_accepted(me, other["id"])
     messages = {
         "sent": (f"Cerere trimisă către @{other['username']}.", "ok"),
         "accepted": (f"Tu și {other['display_name']} sunteți acum prieteni.", "ok"),
@@ -284,6 +274,7 @@ def friend_request():
 @login_required
 def friend_accept(other_id):
     if db_social.accept_friend_request(g.user["id"], other_id):
+        emails.friend_accepted(g.user, other_id)
         flash("Cerere acceptată. Alege din Confidențialitate ce vede noul prieten.", "ok")
     return redirect(url_for("social.friends"))
 
@@ -588,6 +579,7 @@ def invite_respond(activity_id):
     accept = request.form.get("accept") == "1"
     category_id = _int(request.form.get("category_id"))
     act = db_social.respond_invite(g.user["id"], activity_id, accept, category_id)
+    emails.after_answer(g.user, act, accept)
     if act is None:
         flash("Invitația nu mai există.", "error")
     elif accept:
@@ -738,3 +730,72 @@ def api_busy():
                        for s, e in free_between(busy, window, min_minutes)]
     return jsonify({"from": start.isoformat(), "to": end.isoformat(), "window": list(window),
                     "people": out_people, "common": common})
+
+
+# ═════════════════════════════════════════ Answering from email ══
+
+def _invite_category(user_id: int, act: dict) -> Optional[int]:
+    """The recipient's category for an invite: theirs if set, else one guessed from the title."""
+    if act.get("my_category_id"):
+        return act["my_category_id"]
+    wanted = db.guess_category_name(act["title"])
+    cats = db.list_categories(user_id)
+    return next((c["id"] for c in cats if c["name"] == wanted), db.fallback_category_id(user_id))
+
+
+@bp.route("/e/<token>", methods=["GET", "POST"])
+def email_action(token):
+    """Accept / decline a friend request or an invite straight from the email.
+
+    The signed link is the authorisation, so no login is needed; a GET only
+    shows the question (mail scanners open links), the buttons POST.
+    """
+    user, data = emails.read_token(token, ("friend", "invite"), emails.ACTION_MAX_AGE)
+    if user is None:
+        return render_template("email_action.html", state="invalid"), 404
+    ctx = {"user": user, "kind": data["k"], "state": "gone"}
+    accept = request.form.get("action") == "accept"
+    if data["k"] == "friend":
+        other = db.get_user(data["s"]) if isinstance(data["s"], int) else None
+        f = db_social.friendship_between(user["id"], other["id"]) if other else None
+        ctx["other"] = other
+        if f and f["status"] == "accepted":
+            ctx["state"] = "friends"
+        elif f and f["requester_id"] == other["id"]:
+            ctx["state"] = "pending"
+            if request.method == "POST":
+                if accept and db_social.accept_friend_request(user["id"], other["id"]):
+                    emails.friend_accepted(user, other["id"])
+                    ctx["state"] = "accepted"
+                elif not accept and db_social.remove_friendship(user["id"], other["id"]):
+                    ctx["state"] = "declined"
+    else:
+        act = db_social.get_participation(user["id"], data["s"]) \
+            if isinstance(data["s"], int) else None
+        if act is not None:
+            ctx.update(act=act, when=when_label(act), state=act["status"],
+                       categories=db.list_categories(user["id"]),
+                       category_id=_invite_category(user["id"], act),
+                       people=db_social.participants([act["id"]]).get(act["id"], []))
+            if request.method == "POST":
+                category_id = _int(request.form.get("category_id")) or ctx["category_id"]
+                before = db_social.respond_invite(user["id"], act["id"], accept, category_id)
+                emails.after_answer(user, before, accept)
+                ctx["state"] = "accepted_now" if accept else "declined_now"
+    return render_template("email_action.html", **ctx)
+
+
+@bp.route("/unsubscribe/<token>", methods=["GET", "POST"])
+def unsubscribe(token):
+    """Stop one kind of notification email — also RFC 8058 one-click (no CSRF token)."""
+    user, data = emails.read_token(token, ("unsub",), emails.UNSUBSCRIBE_MAX_AGE)
+    if user is None or data["s"] not in emails.KINDS:
+        return render_template("unsubscribe.html", state="invalid"), 404
+    kind = data["s"]
+    if request.method == "POST":
+        kinds = [k for k in (user["email_notify"] or "").split(",") if k and k != kind]
+        db.update_user(user["id"], email_notify=",".join(kinds))
+        if request.form.get("List-Unsubscribe") == "One-Click":
+            return "", 204
+        return render_template("unsubscribe.html", state="done", label=emails.KIND_LABELS[kind])
+    return render_template("unsubscribe.html", state="ask", label=emails.KIND_LABELS[kind])

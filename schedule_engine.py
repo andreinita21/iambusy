@@ -101,6 +101,25 @@ def format_date_ro(d: date, long: bool = False) -> str:
     return f"{d.day} {months[d.month - 1]}"
 
 
+
+WEEK_LABELS = {"both": "", "odd": "săpt. impară", "even": "săpt. pară"}
+
+
+def when_label(act: dict) -> str:
+    """``Vineri, 7 noiembrie · 18:00–20:00`` or ``Luni · 10:00–12:00 · săpt. impară``."""
+    times = f"{act['start_time']}–{act['end_time']}"
+    if act.get("date"):
+        d = date.fromisoformat(act["date"])
+        return f"{DAY_DISPLAY[DAYS[d.weekday()]]}, {format_date_ro(d, long=True)} {d.year} · {times}"
+    parts = [f"În fiecare {DAY_DISPLAY[act['day']].lower()}", times]
+    if WEEK_LABELS.get(act.get("week_type")):
+        parts.append(WEEK_LABELS[act["week_type"]])
+    if act.get("valid_from") or act.get("valid_until"):
+        start = format_date_ro(date.fromisoformat(act["valid_from"])) if act.get("valid_from") else "…"
+        end = format_date_ro(date.fromisoformat(act["valid_until"])) if act.get("valid_until") else "…"
+        parts.append(f"{start} – {end}")
+    return " · ".join(parts)
+
 def relative_day_ro(d: date, today: date) -> str:
     """Return ``azi`` / ``mâine`` or ``luni, 28 sep`` relative to *today*."""
     delta = (d - today).days

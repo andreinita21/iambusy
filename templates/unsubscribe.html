@@ -1,0 +1,30 @@
+{% extends "auth_base.html" %}
+{% block title %}Dezabonare{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    <header class="auth-head {{ 'auth-head-lime' if state == 'done' else 'auth-head-yellow' }}">
+        <span class="tag tag-ink">Emailuri IamBusy</span>
+        {% if state == 'invalid' %}
+        <h1 class="auth-title" id="auth-title">Link invalid</h1>
+        <p class="auth-lead">Alege ce emailuri primești din pagina contului.</p>
+        {% elif state == 'done' %}
+        <h1 class="auth-title" id="auth-title">Gata</h1>
+        <p class="auth-lead">Nu mai primești emailuri despre {{ label }}. Le poți reporni oricând din pagina
+            contului.</p>
+        {% else %}
+        <h1 class="auth-title" id="auth-title">Oprești emailurile?</h1>
+        <p class="auth-lead">Nu vei mai primi emailuri despre {{ label }}. Le vezi în continuare în aplicație.</p>
+        {% endif %}
+    </header>
+    <div class="auth-form">
+        {% if state == 'ask' %}
+        <form method="post" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary btn-block">Da, oprește-le</button>
+        </form>
+        {% endif %}
+        <a class="btn btn-block" href="/account#notifications">Setările contului</a>
+    </div>
+</section>
+{% endblock %}

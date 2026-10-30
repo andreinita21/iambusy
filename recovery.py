@@ -12,36 +12,26 @@ Email address on the account and "forgot password" by email.
   logs every device out.
 """
 
-import re
 import secrets
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for
-from markupsafe import escape
+from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
 
 import db
+import emails
 import mailer
 from auth import (
-    LIMIT_LOGIN_PAIR, _hash_token, _limited, absolute_url, client_ip, hash_password,
-    login_required, normalize_username, validate_password, verify_password,
+    EMAIL_MAX, LIMIT_LOGIN_PAIR, _hash_token, _limited, absolute_url, client_ip, hash_password,
+    login_required, normalize_email, normalize_username, valid_email, validate_password,
+    verify_password,
 )
 
 bp = Blueprint("recovery", __name__)
 
-EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
-EMAIL_MAX = 254
 RESET_LIFETIME = 60 * 60            # seconds
 VERIFY_LIFETIME = 24 * 60 * 60
 LIMIT_FORGOT_IP = (5, 15 * 60)      # forgot-password requests per visitor
 LIMIT_FORGOT_USER = (3, 60 * 60)    # reset emails per account
 LIMIT_VERIFY_USER = (5, 60 * 60)    # confirmation emails per account
-
-
-def normalize_email(raw) -> str:
-    return (raw or "").strip().lower()[:EMAIL_MAX + 1]
-
-
-def valid_email(email: str) -> bool:
-    return len(email) <= EMAIL_MAX and bool(EMAIL_RE.match(email))
 
 
 def _new_token() -> tuple[str, str]:
@@ -51,24 +41,7 @@ def _new_token() -> tuple[str, str]:
 
 # ════════════════════════════════════════════════════ Messages ══
 
-def _message(greeting: str, lines: list[str], button: str = "", url: str = "",
-             footer: str = "") -> tuple[str, str]:
-    """Plain-text and HTML bodies of one short email."""
-    text = "\n\n".join([greeting, *lines, *([f"{button}: {url}"] if url else []),
-                        *([footer] if footer else []), "— IamBusy"])
-    paragraphs = "".join(f'<p style="margin:0 0 14px">{escape(l)}</p>' for l in lines)
-    action = (f'<p style="margin:22px 0"><a href="{escape(url)}" style="display:inline-block;'
-              'background:#ffd23f;color:#111;border:3px solid #111;border-radius:8px;'
-              'padding:12px 20px;font-weight:700;text-decoration:none">'
-              f'{escape(button)}</a></p><p style="margin:0 0 14px;font-size:13px;color:#555">'
-              f'Sau copiază linkul în browser:<br>{escape(url)}</p>') if url else ""
-    foot = f'<p style="margin:0 0 14px;font-size:13px;color:#555">{escape(footer)}</p>' if footer else ""
-    html = ('<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;'
-            'line-height:1.5;color:#111;max-width:520px;margin:0 auto;padding:24px">'
-            '<p style="margin:0 0 18px;font-size:20px;font-weight:700">IamBusy</p>'
-            f'<p style="margin:0 0 14px">{escape(greeting)}</p>{paragraphs}{action}{foot}'
-            '<p style="margin:22px 0 0;font-size:13px;color:#555">— IamBusy</p></div>')
-    return text, html
+_message = mailer.compose
 
 
 def _send(to: str, subject: str, body: tuple[str, str]) -> None:
@@ -144,19 +117,42 @@ def reset_password(token):
 
 # ════════════════════════════════════════ Email on the account ══
 
+def send_verification(user: dict, email: str) -> None:
+    """Email a confirmation link for *email* (24 h); a newer link replaces older ones."""
+    token, token_hash = _new_token()
+    db.create_email_token(user["id"], "verify", token_hash, email, VERIFY_LIFETIME)
+    db.record_attempt(f"email-verify:{user['id']}")
+    url = absolute_url(url_for("recovery.verify_email", token=token))
+    _send(email, "Confirmă adresa de email pentru IamBusy", _message(
+        f"Salut, {user['display_name']}!",
+        [f"Confirmă că această adresă îți aparține, ca s-o legăm de contul @{user['username']}. "
+         "O folosim pentru resetarea parolei și pentru notificările pe care le alegi.",
+         "Linkul funcționează 24 de ore."],
+        "Confirmă adresa", url,
+        "Dacă nu știi despre ce e vorba, ignoră mesajul — adresa nu va fi folosită."))
+
+
+def _back() -> str:
+    """Where the email forms return to: the gate while there is no confirmed address."""
+    return url_for("auth.account") + "#email" if g.user["email"] else url_for(
+        "recovery.email_required")
+
+
 @bp.route("/account/email", methods=["POST"])
 @login_required
 def account_email():
     user = g.user
     if not mailer.enabled():
         flash("Trimiterea de emailuri nu este configurată încă.", "error")
-        return redirect(url_for("auth.account") + "#email")
+        return redirect(_back())
     email = normalize_email(request.form.get("email"))
     password = request.form.get("password") or ""
     key = f"email-pw:{user['id']}"
-    if _limited(key, LIMIT_LOGIN_PAIR):
+    # Replacing a confirmed address needs the password (a stolen session must not
+    # be able to redirect password resets); adding the first one doesn't.
+    if user["email"] and _limited(key, LIMIT_LOGIN_PAIR):
         flash("Prea multe încercări. Așteaptă câteva minute.", "error")
-    elif not verify_password(user["password_hash"], password):
+    elif user["email"] and not verify_password(user["password_hash"], password):
         db.record_attempt(key)
         flash("Parola nu e corectă.", "error")
     elif not valid_email(email):
@@ -166,25 +162,71 @@ def account_email():
     elif _limited(f"email-verify:{user['id']}", LIMIT_VERIFY_USER):
         flash("Ai cerut prea multe confirmări. Încearcă din nou peste o oră.", "error")
     else:
-        db.record_attempt(f"email-verify:{user['id']}")
-        token, token_hash = _new_token()
-        db.create_email_token(user["id"], "verify", token_hash, email, VERIFY_LIFETIME)
-        url = absolute_url(url_for("recovery.verify_email", token=token))
-        _send(email, "Confirmă adresa de email pentru IamBusy", _message(
-            f"Salut, {user['display_name']}!",
-            [f"Confirmă că această adresă îți aparține, ca s-o legăm de contul @{user['username']}. "
-             "O folosim doar ca să-ți poți reseta parola.",
-             "Linkul funcționează 24 de ore."],
-            "Confirmă adresa", url,
-            "Dacă nu știi despre ce e vorba, ignoră mesajul — adresa nu va fi folosită."))
+        send_verification(user, email)
         flash(f"Ți-am trimis un link de confirmare la {email}. Verifică și folderul Spam.", "ok")
-    return redirect(url_for("auth.account") + "#email")
+    return redirect(_back())
+
+
+@bp.route("/confirm-email/resend", methods=["POST"])
+@login_required
+def resend_verification():
+    pending = db.pending_email(g.user["id"])
+    if not pending:
+        flash("Nu există nicio adresă care să aștepte confirmarea. Introdu una.", "error")
+    elif _limited(f"email-verify:{g.user['id']}", LIMIT_VERIFY_USER):
+        flash("Ai cerut prea multe confirmări. Încearcă din nou peste o oră.", "error")
+    else:
+        send_verification(g.user, pending)
+        flash(f"Am retrimis linkul la {pending}.", "ok")
+    return redirect(_back())
+
+
+# ═════════════════════════════════════════ Email is required ══
+
+# Accounts created before this date get the "IamBusy now needs an email" text.
+EMAIL_REQUIRED_SINCE = 1793311200  # 2026-10-30 00:00 (Bucharest)
+
+# What an account without a confirmed address may still do.
+GATE_OPEN = {
+    "static", "recovery.email_required", "recovery.account_email", "recovery.resend_verification",
+    "recovery.verify_email", "auth.logout", "auth.account_export", "auth.account_delete",
+    "social.email_action", "social.unsubscribe",
+}
+
+
+def require_email():
+    """``before_request`` hook: logged-in accounts need a confirmed address."""
+    user = g.get("user")
+    if user is None or user["email"] or request.endpoint is None or not mailer.enabled():
+        return None
+    if (request.endpoint in GATE_OPEN or request.endpoint.startswith("public.")
+            or request.endpoint.startswith("sharing.share_")):
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Confirmă-ți adresa de email ca să continui.",
+                        "code": "email"}), 403
+    return redirect(url_for("recovery.email_required"))
+
+
+@bp.route("/confirm-email")
+@login_required
+def email_required():
+    if g.user["email"]:
+        return redirect(url_for("index"))
+    return render_template(
+        "email_required.html", user=g.user, pending=db.pending_email(g.user["id"]),
+        is_new=g.user["created_at"] >= EMAIL_REQUIRED_SINCE, mail_enabled=mailer.enabled())
 
 
 @bp.route("/account/email/verify/<token>")
 def verify_email(token):
     record = db.get_email_token("verify", _hash_token(token)) if len(token) < 100 else None
-    target = url_for("auth.account") + "#email" if g.user else url_for("auth.login")
+    if g.user is None:
+        target = url_for("auth.login")
+    elif g.user["email"]:
+        target = url_for("auth.account") + "#email"
+    else:
+        target = url_for("index")  # first confirmed address: the app opens up
     if record is None:
         flash("Linkul de confirmare nu mai este valid. Cere unul nou din pagina contului.", "error")
         return redirect(target)
@@ -204,11 +246,11 @@ def verify_email(token):
     return redirect(target)
 
 
-@bp.route("/account/email/remove", methods=["POST"])
-@login_required
-def account_email_remove():
-    db.update_user(g.user["id"], email=None)
-    db.drop_email_tokens(g.user["id"])
-    flash("Adresa de email a fost ștearsă din cont.", "ok")
-    return redirect(url_for("auth.account") + "#email")
 
+@bp.route("/account/notifications", methods=["POST"])
+@login_required
+def account_notifications():
+    kinds = [k for k in emails.KINDS if request.form.get(f"notify_{k}") == "1"]
+    db.update_user(g.user["id"], email_notify=",".join(kinds))
+    flash("Preferințele de email au fost salvate.", "ok")
+    return redirect(url_for("auth.account") + "#notifications")

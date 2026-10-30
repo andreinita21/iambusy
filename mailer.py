@@ -14,6 +14,8 @@ import threading
 import urllib.error
 import urllib.request
 
+from markupsafe import escape
+
 log = logging.getLogger("iambusy.mail")
 
 API_URL = "https://api.brevo.com/v3/smtp/email"
@@ -33,7 +35,43 @@ def enabled() -> bool:
     return bool(_settings["api_key"] and _settings["sender"])
 
 
-def send(to: str, subject: str, text: str, html: str) -> None:
+def compose(greeting: str, lines: list[str], button: str = "", url: str = "",
+            footer: str = "", unsubscribe: tuple[str, str] = None) -> tuple[str, str]:
+    """Plain-text and HTML bodies of one short email.
+
+    *unsubscribe* is ``(what, url)`` for notification emails, e.g.
+    ``("cereri de prietenie", "https://…/unsubscribe/…")``.
+    """
+    small = 'style="margin:0 0 14px;font-size:13px;color:#555"'
+    text_parts = [greeting, *lines]
+    if url:
+        text_parts.append(f"{button}: {url}")
+    if footer:
+        text_parts.append(footer)
+    text_parts.append("— IamBusy")
+    paragraphs = "".join(f'<p style="margin:0 0 14px">{escape(l)}</p>' for l in lines)
+    action = (f'<p style="margin:22px 0"><a href="{escape(url)}" style="display:inline-block;'
+              'background:#ffd23f;color:#111;border:3px solid #111;border-radius:8px;'
+              'padding:12px 20px;font-weight:700;text-decoration:none">'
+              f'{escape(button)}</a></p><p {small}>Sau copiază linkul în browser:<br>'
+              f'<span style="word-break:break-all">{escape(url)}</span></p>') if url else ""
+    foot = f'<p {small}>{escape(footer)}</p>' if footer else ""
+    unsub = ""
+    if unsubscribe:
+        what, unsub_url = unsubscribe
+        text_parts.append(f"Nu mai vrei emailuri despre {what}? {unsub_url}")
+        unsub = (f'<p style="margin:26px 0 0;font-size:12px;color:#777">Primești acest email pentru că '
+                 f'ai cont pe IamBusy. <a href="{escape(unsub_url)}" style="color:#777">Nu mai vreau '
+                 f'emailuri despre {escape(what)}</a>.</p>')
+    html = ('<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;'
+            'line-height:1.5;color:#111;max-width:520px;margin:0 auto;padding:24px">'
+            '<p style="margin:0 0 18px;font-size:20px;font-weight:700">IamBusy</p>'
+            f'<p style="margin:0 0 14px">{escape(greeting)}</p>{paragraphs}{action}{foot}'
+            f'<p style="margin:22px 0 0;font-size:13px;color:#555">— IamBusy</p>{unsub}</div>')
+    return "\n\n".join(text_parts), html
+
+
+def send(to: str, subject: str, text: str, html: str, unsubscribe_url: str = "") -> None:
     """Queue one message; failures are logged, never raised to the visitor."""
     payload = {
         "sender": {"email": _settings["sender"], "name": _settings["sender_name"]},
@@ -42,6 +80,10 @@ def send(to: str, subject: str, text: str, html: str) -> None:
         "textContent": text,
         "htmlContent": html,
     }
+    if unsubscribe_url:
+        # RFC 8058 one-click unsubscribe, shown by Gmail / Outlook next to the sender.
+        payload["headers"] = {"List-Unsubscribe": f"<{unsubscribe_url}>",
+                              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
     if _settings["reply_to"]:
         payload["replyTo"] = {"email": _settings["reply_to"]}
     if not enabled():

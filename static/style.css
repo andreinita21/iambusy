@@ -3790,3 +3790,27 @@ kbd {
 .forgot-link:hover {
   color: var(--ink);
 }
+
+.auth-form .hint a {
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: var(--yellow);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+.gate-delete summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.gate-delete[open] summary {
+  margin-bottom: var(--sp-3);
+}
+
+.auth-card .auth-form .auth-form {
+  padding: 0;
+}

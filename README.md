@@ -18,7 +18,9 @@
 
 -   **Home page** (`/` when logged out): what the app does, with sign-in and "Am o invitație" buttons. Logged-in users get their calendar at the same address.
 -   **Legal pages**: privacy policy (`/confidentialitate`, GDPR) and terms (`/termeni`), linked in every footer and on the sign-up form. Operator name and contact come from `OPERATOR_NAME` / `CONTACT_EMAIL`; bump `public.LEGAL_UPDATED` whenever their text changes.
--   **Forgotten password**: an optional email on the account (attached only after clicking a confirmation link) lets people reset their password from `/forgot`. Emails go out through Brevo's API (`mailer.py`, `BREVO_API_KEY`) on a background thread; the page answers the same whether or not the account exists. Reset links are single-use, valid for an hour, stored only as SHA-256, replaced by newer ones and cancelled by a password change; resetting logs every device out and sends a notice. Rate limits: 5 requests / 15 min per IP, 3 emails / hour per account.
+-   **Email is required**: sign-up asks for an address and the account opens once its confirmation link is clicked; accounts created earlier see a "IamBusy now needs your email" screen at their next login (logging out, exporting data and deleting the account stay possible there). The address is attached only after the click, so nobody can point an account at a mailbox they don't control. Emails go out through Brevo's API (`mailer.py`, `BREVO_API_KEY`) on a background thread; without a key the requirement is off.
+-   **Forgotten password**: `/forgot` sends a reset link (single-use, valid for an hour, stored only as SHA-256, replaced by newer ones and cancelled by a password change); the page answers the same whether or not the account exists. Resetting logs every device out and sends a notice. Rate limits: 5 requests / 15 min per IP, 3 emails / hour per account.
+-   **Notification emails** (`emails.py`): friend requests and activity invites — with Accept / Decline buttons that work without logging in (signed personal link, 14 days, invalid once the address changes; opening it changes nothing, the buttons do) — plus answers to yours and changed / cancelled activities. Each kind can be switched off on the account page or with the one-click unsubscribe link (RFC 8058 `List-Unsubscribe`). Limits: the same request / invite at most once a day, 3 change emails an hour per activity, 30 notification emails a day per recipient.
 -   **Your data**: the account page has *Descarcă datele mele* (everything stored about you as JSON, without password / token / PIN hashes) and *Șterge-mi contul definitiv* (password required; the last active admin can't delete themselves).
 -   **One address**: with `SITE_URL` set, any other host name and plain `http://` get a 301 (308 for form posts) to it, and copied links are built from it. Requests by IP or to `localhost` are left alone.
 -   **Search & previews**: `robots.txt`, `sitemap.xml`, canonical links, Open Graph / Twitter cards (share links and friend links get their own titles; PIN-protected links reveal nothing), JSON-LD, a web app manifest with PNG / maskable icons and `favicon.ico`.
@@ -108,7 +110,8 @@ A full-featured management page (`/manage`) lets you take control of your schedu
 ```
 iambusy/
 ├── app.py                    # Flask HTTP layer + REST API, security headers
-├── recovery.py               # Email on the account, forgot / reset password
+├── recovery.py               # Required email, confirmation, forgot / reset password
+├── emails.py                 # Notification emails, Accept / Decline and unsubscribe links
 ├── mailer.py                 # Outgoing email through the Brevo API
 ├── public.py                 # Home page, legal pages, robots/sitemap/manifest, error pages, canonical host
 ├── auth.py                   # Login, registration, sessions, CSRF, rate limits, admin

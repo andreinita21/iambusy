@@ -38,7 +38,7 @@ CONTACT_EMAIL = getattr(config, "CONTACT_EMAIL", "")
 BREVO_API_KEY = getattr(config, "BREVO_API_KEY", "")
 MAIL_FROM = getattr(config, "MAIL_FROM", "")
 
-from schedule_engine import DAY_DISPLAY, DAYS, find_conflicts, is_odd_week
+from schedule_engine import DAY_DISPLAY, DAYS, find_conflicts, is_odd_week, when_label
 from db import (
     init_db,
     get_all_activities,
@@ -57,6 +57,7 @@ from calendar_data import (
 )
 import auth
 from auth import login_required
+import emails
 import mailer
 import public
 import recovery
@@ -96,6 +97,7 @@ init_db()
 app.before_request(public.canonical_redirect)
 app.before_request(auth.load_current_user)
 app.before_request(auth.csrf_protect)
+app.before_request(recovery.require_email)
 app.register_blueprint(public.bp)
 app.register_blueprint(auth.bp)
 app.register_blueprint(recovery.bp)
@@ -385,13 +387,16 @@ def api_manage_context():
 
 
 def _apply_extras(activity_id: int, rules, invitees) -> None:
-    # New invitees need no notification: pending invites are listed (and
-    # counted in the badge) straight from the participants table.
+    # New invitees get no in-app notification (pending invites are listed and
+    # counted in the badge straight from the participants table), only an email.
     user_id = g.user["id"]
     if rules is not None:
         db_social.set_activity_rules(user_id, activity_id, rules)
     if invitees is not None:
-        db_social.set_invitees(user_id, activity_id, invitees)
+        added, _ = db_social.set_invitees(user_id, activity_id, invitees)
+        if added:
+            act = get_activity(user_id, activity_id)
+            emails.activity_invites(g.user, act, when_label(act), added)
 
 
 @app.route("/api/activities", methods=["POST"])
@@ -461,8 +466,9 @@ def api_update_activity(activity_id):
     updated = get_activity(user_id, activity_id)
     if any(updated[k] != current[k] for k in when):
         people = db_social.participants([activity_id]).get(activity_id, [])
-        db_social.notify([p["user_id"] for p in people if p["status"] != "declined"],
-                         "activity_changed", user_id, activity_id, updated["title"])
+        going = [p["user_id"] for p in people if p["status"] != "declined"]
+        db_social.notify(going, "activity_changed", user_id, activity_id, updated["title"])
+        emails.activity_changed(g.user, updated, when_label(updated), going)
     return jsonify({"success": True})
 
 
@@ -474,8 +480,9 @@ def api_delete_activity(activity_id):
     current = get_activity(user_id, activity_id)
     people = db_social.participants([activity_id]).get(activity_id, [])
     if current and delete_activity(user_id, activity_id):
-        db_social.notify([p["user_id"] for p in people if p["status"] != "declined"],
-                         "activity_cancelled", user_id, None, current["title"])
+        going = [p["user_id"] for p in people if p["status"] != "declined"]
+        db_social.notify(going, "activity_cancelled", user_id, None, current["title"])
+        emails.activity_changed(g.user, current, when_label(current), going, cancelled=True)
         return jsonify({"success": True})
     return jsonify({"error": "Activity not found"}), 404
 
@@ -532,8 +539,10 @@ def api_respond_shared(activity_id):
     category_id = data.get("category_id")
     if category_id is not None and type(category_id) is not int:
         return jsonify({"error": "Invalid category"}), 400
-    if db_social.respond_invite(g.user["id"], activity_id, data["accept"], category_id) is None:
+    act = db_social.respond_invite(g.user["id"], activity_id, data["accept"], category_id)
+    if act is None:
         return jsonify({"error": "Activity not found"}), 404
+    emails.after_answer(g.user, act, data["accept"])
     return jsonify({"success": True})
 
 
@@ -544,6 +553,7 @@ def api_leave_shared(activity_id):
     if act is None:
         return jsonify({"error": "Activity not found"}), 404
     db_social.respond_invite(g.user["id"], activity_id, accept=False)
+    emails.after_answer(g.user, act, False)
     db_social.set_activity_rules(g.user["id"], activity_id, [])
     return jsonify({"success": True})
 

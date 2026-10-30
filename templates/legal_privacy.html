@@ -7,8 +7,8 @@
 <p class="legal-meta mono">Actualizată la {{ site.legal_updated.strftime("%d.%m.%Y") }}</p>
 
 <p class="legal-lead">Pe scurt: păstrăm doar ce e nevoie ca să-ți funcționeze orarul și partajarea lui.
-    Emailul e opțional (doar pentru resetarea parolei), nu cerem telefon, nu avem reclame, trackere sau
-    analytics și nu vindem nimic nimănui.
+    Cerem o adresă de email (pentru cont, resetarea parolei și notificările pe care le alegi), nu cerem
+    telefon, nu avem reclame, trackere sau analytics și nu vindem nimic nimănui.
     Îți poți descărca datele și îți poți șterge contul oricând, singur, din pagina contului.</p>
 
 <h2>1. Cine răspunde de date</h2>
@@ -21,10 +21,18 @@
 <ul>
     <li><b>Contul:</b> numele de utilizator, numele afișat, parola (doar ca hash scrypt, niciodată în clar),
         data creării, ultima autentificare, prima zi a săptămânii 1 și, dacă e cazul, cine te-a invitat.</li>
-    <li><b>Emailul (opțional):</b> doar dacă îl adaugi tu în pagina contului și confirmi linkul primit.
-        Îl folosim exclusiv ca să-ți trimitem linkuri de confirmare și de resetare a parolei și scurte
-        anunțuri de securitate (parola sau adresa s-au schimbat) — niciodată newslettere sau reclame.
-        Linkurile trimise sunt păstrate doar ca hash și expiră în cel mult 24 de ore.</li>
+    <li><b>Emailul:</b> obligatoriu pentru fiecare cont și legat de el doar după ce apeși linkul de
+        confirmare. Îl folosim ca să-ți trimitem:
+        <ul>
+            <li>linkuri de confirmare și de resetare a parolei și scurte anunțuri de securitate (parola sau
+                adresa s-au schimbat);</li>
+            <li>notificări: cereri de prietenie, invitații la activități (cu butoane ca să răspunzi direct
+                din email), răspunsuri la cererile și invitațiile tale, activități modificate sau anulate.
+                Fiecare tip se oprește din pagina contului sau cu un click din email.</li>
+        </ul>
+        Niciodată newslettere sau reclame. Linkurile de confirmare și resetare sunt păstrate doar ca hash și
+        expiră în cel mult 24 de ore; linkurile de răspuns din notificări sunt semnate, nu sunt păstrate și
+        expiră în 14 zile.</li>
     <li><b>Orarul:</b> activitățile tale (titlu, zi, oră, repetare, dată), categoriile, grupurile de prieteni
         și regulile de vizibilitate.</li>
     <li><b>Prietenii:</b> prieteniile și cererile, persoanele blocate, invitațiile la activități și
@@ -36,8 +44,9 @@
         al ultimei activități — ca să le poți vedea și deconecta din pagina contului.</li>
     <li><b>Securitate:</b> încercările eșuate (de autentificare — cu numele de utilizator tastat —, de PIN,
         de coduri de invitație), conturile noi create de la o adresă IP și căutările de prieteni, legate
-        de adresa IP sau de cont, ca să oprim ghicirea parolelor și abuzurile. Se șterg automat în cel mult
-        două zile.</li>
+        de adresa IP sau de cont, plus numărul de notificări trimise fiecărui cont, ca să oprim ghicirea
+        parolelor și abuzurile (de exemplu emailuri trimise în exces). Se șterg automat în cel mult două
+        zile.</li>
 </ul>
 <p>Cine deschide un link public fără cont nu ne lasă alte date în afara celor tehnice de mai sus
     (adresa IP, doar dacă greșește PIN-ul).</p>
@@ -64,8 +73,8 @@
     <li><b>Oricine are un link public</b> creat de tine — exact intervalul și nivelul de detaliu pe care
         le-ai ales, până expiră sau până îl dezactivezi.</li>
     <li><b>Administratorul</b> — are acces tehnic la server și vede în panoul de administrare lista
-        conturilor (nume, data creării, ultima autentificare, cine i-a invitat, numărul de activități și de
-        dispozitive conectate).</li>
+        conturilor (nume, adresa de email, data creării, ultima autentificare, cine i-a invitat, numărul de
+        activități și de dispozitive conectate).</li>
 </ul>
 
 <h2>5. Furnizori</h2>
@@ -112,8 +121,9 @@
     opoziție. Cele mai multe le exerciți direct, fără să ceri nimic nimănui:</p>
 <ul>
     <li><b>Acces și portabilitate:</b> Contul meu → <i>Descarcă datele mele</i> (fișier JSON).</li>
-    <li><b>Rectificare:</b> numele afișat, emailul și orarul se schimbă oricând din aplicație; emailul îl
-        poți și șterge din cont.</li>
+    <li><b>Rectificare:</b> numele afișat, emailul și orarul se schimbă oricând din aplicație.</li>
+    <li><b>Opoziție la notificări:</b> Contul meu → <i>Notificări pe email</i>, sau linkul de dezabonare din
+        orice notificare.</li>
     <li><b>Ștergere:</b> Contul meu → <i>Șterge-mi contul definitiv</i>.</li>
 </ul>
 <p>{% if site.contact %}Pentru restul scrie la <a href="mailto:{{ site.contact }}">{{ site.contact }}</a>.

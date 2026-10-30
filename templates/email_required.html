@@ -1,0 +1,68 @@
+{% extends "auth_base.html" %}
+{% block title %}Confirmă emailul{% endblock %}
+
+{% block actions %}
+<form method="post" action="/logout">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn">Ieși</button>
+</form>
+{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    <header class="auth-head auth-head-yellow">
+        <span class="tag tag-ink">@{{ user.username }}</span>
+        {% if pending %}
+        <h1 class="auth-title" id="auth-title">Verifică-ți emailul</h1>
+        <p class="auth-lead">Am trimis un link de confirmare la <b>{{ pending }}</b>. Apasă-l și contul se
+            deschide.</p>
+        {% elif is_new %}
+        <h1 class="auth-title" id="auth-title">Confirmă-ți emailul</h1>
+        <p class="auth-lead">Ultimul pas: adaugă adresa de email și apasă linkul pe care ți-l trimitem.</p>
+        {% else %}
+        <h1 class="auth-title" id="auth-title">Avem nevoie de emailul tău</h1>
+        <p class="auth-lead">IamBusy cere acum o adresă de email pentru fiecare cont: îți trimitem pe ea
+            cererile de prietenie și invitațiile (le poți accepta direct din email) și linkul de resetare
+            dacă îți uiți parola. Orarul și prietenii tăi te așteaptă exact cum i-ai lăsat.</p>
+        {% endif %}
+    </header>
+
+    <div class="auth-form">
+        {% if pending %}
+        <p class="hint">N-a venit în câteva minute? Verifică folderul Spam. Linkul e valabil 24 de ore.</p>
+        <form method="post" action="/confirm-email/resend">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary btn-block">Retrimite linkul</button>
+        </form>
+        {% endif %}
+
+        <form class="auth-form" method="post" action="/account/email">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="field">
+                <label for="email">{{ 'Altă adresă' if pending else 'Adresa de email' }}</label>
+                <input class="input" type="email" id="email" name="email" maxlength="254" autocomplete="email"
+                    autocapitalize="none" required {% if not pending %}autofocus{% endif %}>
+            </div>
+            <button type="submit" class="btn {{ 'btn' if pending else 'btn-accent' }} btn-block">
+                {{ 'Trimite la adresa nouă' if pending else 'Trimite linkul de confirmare' }}</button>
+        </form>
+
+        <p class="hint">Folosim adresa doar pentru contul tău — nu primești reclame și poți opri oricând
+            notificările. Detalii în <a href="/confidentialitate">politica de confidențialitate</a>.
+            Nu vrei? Poți să-ți <a href="/account/export" download>descarci datele</a> sau să-ți ștergi contul:</p>
+        <details class="gate-delete">
+            <summary>Șterge contul</summary>
+            <form class="auth-form" method="post" action="/account/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" name="username" value="{{ user.username }}" autocomplete="username" hidden>
+                <div class="field">
+                    <label for="delete_password">Parola, pentru confirmare</label>
+                    <input class="input" type="password" id="delete_password" name="password"
+                        autocomplete="current-password" maxlength="128" required>
+                </div>
+                <button type="submit" class="btn btn-danger">Șterge-mi contul definitiv</button>
+            </form>
+        </details>
+    </div>
+</section>
+{% endblock %}

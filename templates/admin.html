@@ -109,6 +109,7 @@
             <div class="row-main">
                 <b>{{ u.display_name }}</b>
                 <span class="mono">@{{ u.username }}</span>
+                <span class="mono">{{ u.email or 'fără email confirmat' }}</span>
                 {% if u.is_admin %}<span class="tag tag-yellow">admin</span>{% endif %}
                 {% if u.id == user.id %}<span class="tag tag-lime">tu</span>{% endif %}
                 {% if not u.is_active %}<span class="tag tag-pink">dezactivat</span>{% endif %}

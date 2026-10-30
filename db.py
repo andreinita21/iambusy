@@ -39,6 +39,16 @@ def _now() -> int:
     return int(time.time())
 
 
+# Kinds of notification email (users.email_notify lists the ones a user wants).
+EMAIL_KIND_LABELS = {
+    "friends": "cereri de prietenie",
+    "invites": "invitații la activități",
+    "answers": "răspunsuri la cererile și invitațiile tale",
+    "changes": "activități modificate sau anulate",
+}
+DEFAULT_EMAIL_NOTIFY = ",".join(EMAIL_KIND_LABELS)
+
+
 def _get_conn() -> sqlite3.Connection:
     """Return a new connection with row-factory enabled."""
     conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -290,8 +300,12 @@ def _migrate(conn) -> None:
         conn.execute(
             "ALTER TABLE users ADD COLUMN invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
     if "email" not in user_cols:
-        # Optional, only ever set after the owner clicked a confirmation link.
+        # Only ever set after the owner clicked a confirmation link.
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    if "email_notify" not in user_cols:
+        # Which notification emails the user wants (see emails.KINDS).
+        conn.execute("ALTER TABLE users ADD COLUMN email_notify TEXT NOT NULL "
+                     f"DEFAULT '{DEFAULT_EMAIL_NOTIFY}'")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) "
                  "WHERE email IS NOT NULL")
     conn.execute("""
@@ -453,7 +467,7 @@ def list_users() -> list[dict]:
     """Every user with session / activity counts (for the admin panel)."""
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT u.id, u.username, u.display_name, u.is_admin, u.is_active, "
+        "SELECT u.id, u.username, u.display_name, u.email, u.is_admin, u.is_active, "
         "       u.created_at, u.last_login_at, "
         "       (SELECT COUNT(*) FROM sessions s "
         "         WHERE s.user_id = u.id AND s.expires_at > ?) AS session_count, "
@@ -470,7 +484,7 @@ def list_users() -> list[dict]:
 def update_user(user_id: int, **fields) -> None:
     """Update whitelisted columns of a user."""
     allowed = {"display_name", "password_hash", "is_active", "week1_start", "last_login_at",
-               "email"}
+               "email", "email_notify"}
     unknown = set(fields) - allowed
     if unknown:
         raise ValueError(f"Cannot update {sorted(unknown)}")

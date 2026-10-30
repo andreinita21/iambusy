@@ -1,0 +1,93 @@
+{% extends "auth_base.html" %}
+{% block title %}{{ 'Cerere de prietenie' if kind == 'friend' else 'Invitație' }}{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    {% if state == 'invalid' %}
+    <header class="auth-head">
+        <span class="tag tag-ink">Link din email</span>
+        <h1 class="auth-title" id="auth-title">Link expirat</h1>
+        <p class="auth-lead">Linkurile din emailuri funcționează 14 zile. Răspunde din aplicație, de pe pagina
+            Prieteni.</p>
+    </header>
+    <div class="auth-form"><a class="btn btn-primary btn-block" href="/friends">Deschide IamBusy</a></div>
+
+    {% elif kind == 'friend' %}
+    <header class="auth-head auth-head-lime">
+        <span class="tag tag-ink">Cerere de prietenie</span>
+        <h1 class="auth-title" id="auth-title">{{ other.display_name if other else 'Cerere' }}</h1>
+        {% if other %}<p class="auth-lead mono">@{{ other.username }}</p>{% endif %}
+        <p class="auth-lead">
+            {% if state == 'pending' %}vrea să fiți prieteni pe IamBusy. Dacă accepți, vă vedeți unul altuia
+                programul — fiecare doar cât permite celuilalt.
+            {% elif state == 'accepted' %}Gata — sunteți prieteni. Alege din Confidențialitate ce vede.
+            {% elif state == 'declined' %}Cerere refuzată.
+            {% elif state == 'friends' %}Sunteți deja prieteni.
+            {% else %}Cererea nu mai există — a fost retrasă sau ai răspuns deja.{% endif %}
+        </p>
+    </header>
+    <div class="auth-form">
+        {% if state == 'pending' %}
+        <p class="hint">Răspunzi ca <b>@{{ user.username }}</b>.</p>
+        <form method="post" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" name="action" value="accept" class="btn btn-accent btn-block">Acceptă</button>
+        </form>
+        <form method="post" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" name="action" value="decline" class="btn btn-block">Refuză</button>
+        </form>
+        {% else %}
+        <a class="btn btn-primary btn-block" href="/friends">Deschide IamBusy</a>
+        {% endif %}
+    </div>
+
+    {% else %}
+    <header class="auth-head auth-head-yellow">
+        <span class="tag tag-ink">Invitație de la {{ act.owner_name if act else '…' }}</span>
+        <h1 class="auth-title" id="auth-title">{{ act.title if act else 'Invitație' }}</h1>
+        {% if act %}<p class="auth-lead">{{ when }}</p>{% endif %}
+        <p class="auth-lead">
+            {% if state == 'accepted_now' %}Ai acceptat — apare acum și în calendarul tău.
+            {% elif state == 'declined_now' %}Ai refuzat invitația.
+            {% elif state == 'accepted' %}Ai acceptat deja invitația.
+            {% elif state == 'declined' %}Ai refuzat invitația — te poți răzgândi.
+            {% elif state == 'gone' %}Invitația nu mai există — activitatea a fost anulată sau ai fost scos.
+            {% endif %}
+        </p>
+    </header>
+    <div class="auth-form">
+        {% if act and state in ('pending', 'accepted', 'declined') %}
+        {% if people %}
+        <p class="hint">Invitați: {% for p in people %}{{ p.display_name }}{{ ' ✓' if p.status == 'accepted' }}{{ ', ' if not loop.last }}{% endfor %}</p>
+        {% endif %}
+        <p class="hint">Răspunzi ca <b>@{{ user.username }}</b>.</p>
+        {% if state != 'accepted' %}
+        <form class="auth-form" method="post" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="field">
+                <label for="category_id">În calendarul tău, la categoria</label>
+                <select class="select" id="category_id" name="category_id">
+                    {% for c in categories %}
+                    <option value="{{ c.id }}" {% if c.id == category_id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+                <span class="hint">Prietenii tăi o văd după regulile acestei categorii.</span>
+            </div>
+            <button type="submit" name="action" value="accept" class="btn btn-accent btn-block">Accept</button>
+        </form>
+        {% endif %}
+        {% if state != 'declined' %}
+        <form method="post" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" name="action" value="decline" class="btn btn-block">
+                {{ 'Renunț' if state == 'accepted' else 'Refuz' }}</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <a class="btn btn-primary btn-block" href="/">Deschide IamBusy</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

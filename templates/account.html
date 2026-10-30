@@ -44,7 +44,7 @@
 </section>
 
 <section class="panel-card" id="email" aria-labelledby="email-title">
-    <h2 class="panel-card-title" id="email-title">Email pentru recuperarea parolei</h2>
+    <h2 class="panel-card-title" id="email-title">Adresa de email</h2>
     {% if user.email %}
     <p class="row-meta"><b class="mono">{{ user.email }}</b> <span class="tag tag-lime">confirmat</span></p>
     {% endif %}
@@ -52,8 +52,8 @@
     <p class="hint">Așteaptă confirmarea: <b class="mono">{{ pending_email }}</b> — apasă linkul din email
         (valabil 24 de ore).</p>
     {% endif %}
-    <p class="hint">Opțional. Îl folosim doar ca să-ți trimitem un link dacă îți uiți parola — fără
-        newslettere sau altceva.</p>
+    <p class="hint">Îl folosim pentru resetarea parolei și pentru notificările alese mai jos — fără
+        newslettere sau reclame. O adresă nouă devine activă după ce apeși linkul de confirmare.</p>
     {% if mail_enabled %}
     <form class="auth-form" method="post" action="/account/email">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -75,12 +75,23 @@
     {% else %}
     <p class="hint">Trimiterea de emailuri nu este configurată încă pe server.</p>
     {% endif %}
-    {% if user.email %}
-    <form method="post" action="/account/email/remove">
+</section>
+
+<section class="panel-card" id="notifications" aria-labelledby="notify-title">
+    <h2 class="panel-card-title" id="notify-title">Notificări pe email</h2>
+    <form class="auth-form" method="post" action="/account/notifications">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-sm">Șterge emailul din cont</button>
+        {% for kind, label in notify_kinds %}
+        <label class="check">
+            <input type="checkbox" name="notify_{{ kind }}" value="1" {% if kind in notify_on %}checked{% endif %}>
+            <span class="check-box" aria-hidden="true"></span>
+            <span class="check-text">{{ label[0] | upper }}{{ label[1:] }}</span>
+        </label>
+        {% endfor %}
+        <p class="hint">Tot ce primești pe email apare și în aplicație. Emailurile despre cont (confirmare,
+            resetarea parolei) vin oricum.</p>
+        <button type="submit" class="btn btn-primary">Salvează</button>
     </form>
-    {% endif %}
 </section>
 
 <section class="panel-card" aria-labelledby="password-title">

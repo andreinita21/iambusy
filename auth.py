@@ -309,6 +309,11 @@ def apply_auth_cookie(response):
 
 # ═══════════════════════════════════════════════════════ CSRF ══
 
+# Authorised by a signed token in the URL instead (mail clients post the RFC 8058
+# one-click unsubscribe without any page or cookie).
+CSRF_EXEMPT = {"social.unsubscribe"}
+
+
 def csrf_token() -> str:
     if "csrf" not in session:
         session.permanent = True
@@ -328,6 +333,8 @@ def _same_origin() -> bool:
 def csrf_protect():
     """``before_request`` hook: reject cross-site state-changing requests."""
     if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    if request.endpoint in CSRF_EXEMPT:
         return None
     sent = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token") or ""
     expected = session.get("csrf", "")
@@ -429,6 +436,18 @@ def login():
     return render_template("login.html", username=username, next_url=next_url)
 
 
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
+EMAIL_MAX = 254
+
+
+def normalize_email(raw) -> str:
+    return (raw or "").strip().lower()[:EMAIL_MAX + 1]
+
+
+def valid_email(email: str) -> bool:
+    return len(email) <= EMAIL_MAX and bool(EMAIL_RE.match(email))
+
+
 FRIEND_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 
@@ -447,7 +466,7 @@ def register():
     if g.user is not None:
         return redirect(url_for("index"))
 
-    form = {"username": "", "display_name": "", "invite": "", "from_link": False,
+    form = {"username": "", "display_name": "", "email": "", "invite": "", "from_link": False,
             "friend": "", "friend_owner": None}
     ip_key = f"register-ip:{client_ip()}"
     friend_code = normalize_friend_code(request.values.get("friend"))
@@ -487,6 +506,7 @@ def register():
         form["from_link"] = request.form.get("from_link") == "1"
         form["username"] = normalize_username(request.form.get("username"))[:64]
         form["display_name"] = " ".join((request.form.get("display_name") or "").split())[:80]
+        form["email"] = normalize_email(request.form.get("email"))
         form["invite"] = "" if form["friend"] else normalize_invite(request.form.get("invite"))
         password = request.form.get("password") or ""
         confirm = request.form.get("password_confirm") or ""
@@ -498,6 +518,7 @@ def register():
         error = (
             validate_username(form["username"])
             or validate_display_name(form["display_name"])
+            or (None if valid_email(form["email"]) else "Adresa de email nu pare validă.")
             or validate_password(password, form["username"], form["display_name"])
             or (None if hmac.compare_digest(password, confirm) else "Parolele nu coincid.")
             or (None if form["invite"] or form["friend"] else "Ai nevoie de un cod de invitație.")
@@ -530,12 +551,15 @@ def register():
         db.record_attempt(ip_key)
         start_session(user_id, persistent=True)
         remember_device(form["username"])
+        # The account is usable once the address is confirmed (recovery.require_email).
+        from recovery import send_verification  # recovery imports this module
+        send_verification(db.get_user(user_id), form["email"])
         if form["friend"]:
             flash(f"Cont creat. Tu și {form['friend_owner']['display_name']} sunteți acum "
                   "prieteni.", "ok")
         else:
             flash("Cont creat. Bine ai venit!", "ok")
-        return redirect(url_for("manage"))
+        return redirect(url_for("recovery.email_required"))
 
     return render_template("register.html", form=form)
 
@@ -584,7 +608,9 @@ def _account_context():
         s["last_seen_str"] = _fmt_ts(s["last_seen"])
         s["created_str"] = _fmt_ts(s["created_at"])
     return {"user": g.user, "sessions": sessions, "session_days": _settings["session_days"],
-            "mail_enabled": mailer.enabled(), "pending_email": db.pending_email(g.user["id"])}
+            "mail_enabled": mailer.enabled(), "pending_email": db.pending_email(g.user["id"]),
+            "notify_kinds": list(db.EMAIL_KIND_LABELS.items()),
+            "notify_on": (g.user["email_notify"] or "").split(",")}
 
 
 @bp.route("/account")
