@@ -4,21 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    {% block meta %}
     <meta name="robots" content="noindex, nofollow">
+    {% endblock %}
     <meta name="referrer" content="same-origin">
     <meta name="theme-color" content="#17171c">
-    <title>IamBusy — {% block title %}{% endblock %}</title>
+    <title>{% block full_title %}IamBusy — {% block title %}{% endblock %}{% endblock %}</title>
 
     <script src="/static/theme.js"></script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@500;700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon"
-        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='6' y='6' width='88' height='88' rx='14' fill='%23ffd23f' stroke='%23111' stroke-width='8'/><rect x='24' y='40' width='52' height='12' fill='%23111'/><rect x='24' y='60' width='32' height='12' fill='%23111'/></svg>">
+{% include "_head_assets.html" %}
 </head>
 
 <body class="{% block body_class %}auth-page{% endblock %}">
@@ -67,6 +62,8 @@
         {% endwith %}
 
         {% block content %}{% endblock %}
+
+        {% block footer %}{% include "_footer.html" %}{% endblock %}
     </div>
 
     <script src="/static/auth.js"></script>

@@ -1,0 +1,65 @@
+{% extends "legal_base.html" %}
+{% block title %}Termeni și condiții{% endblock %}
+{% block description %}Regulile de folosire a IamBusy: contul, ce poți partaja, ce nu e permis și ce garanții (nu) oferim.{% endblock %}
+
+{% block legal %}
+<h1 class="legal-title">Termeni și condiții</h1>
+<p class="legal-meta mono">Actualizați la {{ site.legal_updated.strftime("%d.%m.%Y") }}</p>
+
+<p class="legal-lead">Folosind IamBusy ({{ site.url | replace("https://", "") }}) ești de acord cu acești
+    termeni. Sunt scurți — te rugăm să-i citești.</p>
+
+<h2>1. Serviciul</h2>
+<p>IamBusy este un orar online gratuit: îți ții activitățile, vezi când ești liber și le arăți
+    prietenilor sau, printr-un link, oricui alege tu. Îl administrează
+    {{ site.operator or "administratorul site-ului" }}.</p>
+
+<h2>2. Contul tău</h2>
+<ul>
+    <li>Contul se creează doar cu un cod de invitație sau prin linkul de prietenie al unui utilizator.</li>
+    <li>Trebuie să ai cel puțin 16 ani.</li>
+    <li>Un cont e pentru o singură persoană. Nu folosi un nume care te dă drept altcineva.</li>
+    <li>Răspunzi de parola ta și de ce se întâmplă din contul tău. Dacă bănuiești că altcineva a intrat
+        în cont, schimbă parola — asta deconectează toate celelalte dispozitive.</li>
+</ul>
+
+<h2>3. Ce partajezi</h2>
+<p>Ce scrii în orar rămâne al tău; ne permiți doar să-l păstrăm și să-l arătăm așa cum ai ales prin
+    regulile de vizibilitate și linkuri. Un link public poate fi deschis de <b>oricine îl are</b>, până
+    expiră sau până îl dezactivezi — gândește-te ce nivel de detaliu alegi și cui îl trimiți.</p>
+
+<h2>4. Ce nu e permis</h2>
+<ul>
+    <li>conținut ilegal, jignitor sau care încalcă drepturile altcuiva în titlurile activităților, în
+        numele afișat sau în orice altceva văd alții;</li>
+    <li>hărțuirea altor utilizatori, inclusiv prin cereri de prietenie sau invitații repetate;</li>
+    <li>încercarea de a ghici parole, PIN-uri sau linkuri, de a ocoli limitele ori de a accesa date care
+        nu îți sunt arătate;</li>
+    <li>colectarea automată a datelor, supraîncărcarea serverului sau orice atac asupra lui.</li>
+</ul>
+
+<h2>5. Suspendare și ștergere</h2>
+<p>Administratorul poate dezactiva sau șterge conturile care încalcă acești termeni. Tu îți poți
+    șterge contul oricând, din pagina contului; ce se întâmplă cu datele e descris în
+    <a href="/confidentialitate">politica de confidențialitate</a>.</p>
+
+<h2>6. Fără garanții</h2>
+<p>IamBusy este oferit gratuit, „ca atare”. Facem tot ce putem să meargă bine și să nu se piardă nimic,
+    dar nu garantăm că serviciul va fi mereu disponibil, fără erori sau că va exista pe termen nelimitat.
+    Poate fi modificat, întrerupt sau oprit. Nu te baza pe el ca singura evidență a unor lucruri
+    importante.</p>
+
+<h2>7. Răspundere</h2>
+<p>În limitele permise de lege, operatorul nu răspunde pentru pagube indirecte rezultate din folosirea
+    sau din imposibilitatea folosirii serviciului — de exemplu o întâlnire ratată din cauza unei
+    întreruperi. Nimic din acești termeni nu îți limitează drepturile pe care legea ți le dă ca
+    consumator.</p>
+
+<h2>8. Modificări</h2>
+<p>Termenii se pot schimba; data de sus arată ultima actualizare. Dacă folosești serviciul în continuare
+    după o schimbare, accepți noua versiune.</p>
+
+<h2>9. Legea aplicabilă</h2>
+<p>Acești termeni sunt guvernați de legea română. Orice neînțelegere încercăm întâi s-o rezolvăm pe cale
+    amiabilă{% if site.contact %} — scrie-ne la <a href="mailto:{{ site.contact }}">{{ site.contact }}</a>{% endif %}.</p>
+{% endblock %}

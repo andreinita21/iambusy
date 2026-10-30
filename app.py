@@ -12,6 +12,7 @@ import os
 import re
 from datetime import date, datetime, timedelta
 from flask import Flask, g, render_template, request, jsonify
+from werkzeug.exceptions import HTTPException
 
 try:
     import schedule_config as config
@@ -31,6 +32,9 @@ SESSION_DAYS = getattr(config, "SESSION_DAYS", 30)
 SHORT_SESSION_HOURS = getattr(config, "SHORT_SESSION_HOURS", 12)
 COOKIE_SECURE = getattr(config, "COOKIE_SECURE", False)
 TRUSTED_PROXIES = getattr(config, "TRUSTED_PROXIES", [])
+SITE_URL = getattr(config, "SITE_URL", "")
+OPERATOR_NAME = getattr(config, "OPERATOR_NAME", "")
+CONTACT_EMAIL = getattr(config, "CONTACT_EMAIL", "")
 
 from schedule_engine import DAY_DISPLAY, DAYS, find_conflicts, is_odd_week
 from db import (
@@ -51,6 +55,7 @@ from calendar_data import (
 )
 import auth
 from auth import login_required
+import public
 import social
 import sharing
 
@@ -72,19 +77,27 @@ auth.configure(
     cookie_secure=COOKIE_SECURE,
     trusted_proxies=TRUSTED_PROXIES,
     default_week1_start=DEFAULT_WEEK1_START,
+    site_url=SITE_URL,
 )
+public.configure(site_url=SITE_URL, operator_name=OPERATOR_NAME, contact_email=CONTACT_EMAIL,
+                 session_days=SESSION_DAYS, short_session_hours=SHORT_SESSION_HOURS)
 social.configure(default_week1_start=DEFAULT_WEEK1_START)
 sharing.configure(default_week1_start=DEFAULT_WEEK1_START, cookie_secure=COOKIE_SECURE)
 
 # ── Initialise database on import ────────────────────────────
 init_db()
 
+app.before_request(public.canonical_redirect)
 app.before_request(auth.load_current_user)
 app.before_request(auth.csrf_protect)
+app.register_blueprint(public.bp)
 app.register_blueprint(auth.bp)
 app.register_blueprint(social.bp)
 app.register_blueprint(sharing.bp)
 app.jinja_env.globals["csrf_token"] = auth.csrf_token
+app.context_processor(public.template_globals)
+app.register_error_handler(HTTPException, public.handle_http_error)
+app.register_error_handler(Exception, public.handle_unexpected_error)
 
 
 @app.context_processor
@@ -98,8 +111,8 @@ def inject_badge():
 CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     "img-src 'self' data:",
     "connect-src 'self'",
     "form-action 'self'",
@@ -121,7 +134,9 @@ def harden_response(response):
         "Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
     if COOKIE_SECURE:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
-    if request.endpoint != "static":
+    if request.endpoint in public.CACHEABLE_ENDPOINTS and response.status_code == 200:
+        public.cache_public(response)
+    elif request.endpoint != "static":
         # Private pages must not be kept by the browser or a shared cache.
         response.headers["Cache-Control"] = "no-store"
     return response
@@ -251,15 +266,16 @@ def _conflict_json(act: dict) -> dict:
 # ═══════════════════════════════════════════════════════ Pages ══
 
 @app.route("/")
-@login_required
 def index():
-    """Render the daily schedule view.
+    """Render the daily schedule view (the public home page when logged out).
 
     Query parameters
     ----------------
     date : str, optional
         ISO-format date (``YYYY-MM-DD``) to view.  Defaults to today.
     """
+    if g.user is None:
+        return public.landing()
     cal = Calendar(g.user, DEFAULT_WEEK1_START)
     context = build_day_context(cal, Viewer.owner(), _parse_view_date(), datetime.now(),
                                 name=g.user["display_name"])

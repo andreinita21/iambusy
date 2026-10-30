@@ -1,0 +1,109 @@
+{% extends "legal_base.html" %}
+{% block title %}Politica de confidențialitate{% endblock %}
+{% block description %}Ce date păstrează IamBusy, de ce, cine le vede, cât timp și cum le descarci sau le ștergi.{% endblock %}
+
+{% block legal %}
+<h1 class="legal-title">Politica de confidențialitate</h1>
+<p class="legal-meta mono">Actualizată la {{ site.legal_updated.strftime("%d.%m.%Y") }}</p>
+
+<p class="legal-lead">Pe scurt: păstrăm doar ce e nevoie ca să-ți funcționeze orarul și partajarea lui.
+    Nu cerem e-mail sau telefon, nu avem reclame, trackere sau analytics și nu vindem nimic nimănui.
+    Îți poți descărca datele și îți poți șterge contul oricând, singur, din pagina contului.</p>
+
+<h2>1. Cine răspunde de date</h2>
+<p>Operatorul datelor este {{ site.operator or "administratorul site-ului" }}, care administrează
+    IamBusy la adresa <a href="{{ site.url }}/">{{ site.url | replace("https://", "") }}</a>.
+    {% if site.contact %}Pentru orice întrebare sau cerere privind datele tale scrie la
+    <a href="mailto:{{ site.contact }}">{{ site.contact }}</a>.{% endif %}</p>
+
+<h2>2. Ce date păstrăm</h2>
+<ul>
+    <li><b>Contul:</b> numele de utilizator, numele afișat, parola (doar ca hash scrypt, niciodată în clar),
+        data creării, ultima autentificare, prima zi a săptămânii 1 și, dacă e cazul, cine te-a invitat.</li>
+    <li><b>Orarul:</b> activitățile tale (titlu, zi, oră, repetare, dată), categoriile, grupurile de prieteni
+        și regulile de vizibilitate.</li>
+    <li><b>Prietenii:</b> prieteniile și cererile, persoanele blocate, invitațiile la activități și
+        răspunsurile la ele, notificările (păstrăm ultimele 200).</li>
+    <li><b>Linkurile:</b> linkurile de prietenie și linkurile publice create de tine, cu setările lor.
+        Pentru un link public numărăm vizualizările și reținem data ultimei vizualizări — nu și cine l-a
+        deschis. PIN-ul unui link e păstrat doar ca hash.</li>
+    <li><b>Dispozitivele conectate:</b> tipul de browser (user agent), adresa IP, momentul conectării și
+        al ultimei activități — ca să le poți vedea și deconecta din pagina contului.</li>
+    <li><b>Securitate:</b> încercările eșuate (de autentificare, de PIN, de coduri de invitație) legate de
+        adresa IP sau de numele de utilizator, ca să oprim ghicirea parolelor. Se șterg automat după
+        24 de ore.</li>
+</ul>
+<p>Cine deschide un link public fără cont nu ne lasă alte date în afara celor tehnice de mai sus
+    (adresa IP, doar dacă greșește PIN-ul).</p>
+
+<h2>3. De ce și pe ce temei</h2>
+<ul>
+    <li>Ca să-ți oferim serviciul pe care l-ai cerut când ți-ai făcut contul — orarul, prietenii,
+        partajarea (art. 6 alin. 1 lit. b GDPR, executarea contractului).</li>
+    <li>Ca să păstrăm serviciul sigur — limitarea încercărilor, lista dispozitivelor, protecția
+        împotriva abuzurilor (art. 6 alin. 1 lit. f GDPR, interes legitim).</li>
+</ul>
+<p>Nu folosim datele pentru reclame, profilare sau decizii automate.</p>
+
+<h2>4. Cine le vede</h2>
+<ul>
+    <li><b>Tu</b> — totul.</li>
+    <li><b>Prietenii tăi</b> — doar ce permit regulile tale de vizibilitate: complet, doar „ocupat” sau
+        nimic. Implicit văd doar „ocupat”, fără detalii.</li>
+    <li><b>Participanții la o activitate</b> — activitatea respectivă și lista celor invitați.</li>
+    <li><b>Oricine are un link public</b> creat de tine — exact intervalul și nivelul de detaliu pe care
+        le-ai ales, până expiră sau până îl dezactivezi.</li>
+    <li><b>Administratorul</b> — are acces tehnic la server și vede în panoul de administrare lista
+        conturilor (nume, data creării, ultima autentificare, cine i-a invitat).</li>
+</ul>
+
+<h2>5. Furnizori</h2>
+<p>Aplicația rulează pe un server propriu, administrat de operator. Traficul trece prin rețeaua
+    <b>Cloudflare</b> (Cloudflare, Inc.), care asigură conexiunea HTTPS și protecția împotriva atacurilor;
+    pentru asta Cloudflare procesează adresa IP și datele tehnice ale fiecărei cereri. Cloudflare poate
+    transfera date în SUA, în baza cadrului UE–SUA privind protecția datelor (Data Privacy Framework) și a
+    clauzelor contractuale standard. Fonturile și toate celelalte fișiere sunt servite de pe serverul
+    nostru — nu încărcăm nimic de la Google sau de la alți terți.</p>
+
+<h2>6. Cookie-uri și stocare locală</h2>
+<p>Folosim doar ce e strict necesar ca site-ul să funcționeze, așa că nu îți cerem consimțământul:</p>
+<div class="legal-table" role="region" aria-label="Cookie-uri" tabindex="0">
+<table>
+    <thead><tr><th>Nume</th><th>Pentru ce</th><th>Cât timp</th></tr></thead>
+    <tbody>
+        <tr><td class="mono">iambusy_auth</td><td>Te ține autentificat pe acest dispozitiv.</td>
+            <td>{{ site.session_days }} de zile de la ultima vizită ({{ site.short_session_hours }} ore fără „Ține-mă minte”)</td></tr>
+        <tr><td class="mono">iambusy_csrf</td><td>Protejează formularele împotriva cererilor false și ține
+            minte un link public deblocat cu PIN.</td><td>{{ site.session_days }} de zile</td></tr>
+        <tr><td class="mono">iambusy-theme</td><td>Tema aleasă (luminoasă / întunecată), în stocarea locală a
+            browserului — nu pleacă spre server.</td><td>Până o ștergi</td></tr>
+    </tbody>
+</table>
+</div>
+
+<h2>7. Cât timp le păstrăm</h2>
+<p>Cât timp ai cont. Sesiunile expiră singure, încercările eșuate se șterg după 24 de ore, iar din
+    notificări rămân doar ultimele 200. Când îți ștergi contul (sau îl șterge administratorul), contul și
+    tot ce ține de el dispar imediat din baza de date: orarul, prieteniile, regulile, linkurile,
+    dispozitivele și activitățile la care i-ai invitat pe alții. Copiile de siguranță ale serverului, dacă
+    există, pot păstra datele un timp limitat, până sunt înlocuite.</p>
+
+<h2>8. Drepturile tale</h2>
+<p>Ai dreptul de acces, de rectificare, de ștergere, de restricționare, de portabilitate și de
+    opoziție. Cele mai multe le exerciți direct, fără să ceri nimic nimănui:</p>
+<ul>
+    <li><b>Acces și portabilitate:</b> Contul meu → <i>Descarcă datele mele</i> (fișier JSON).</li>
+    <li><b>Rectificare:</b> numele afișat și orarul se schimbă oricând din aplicație.</li>
+    <li><b>Ștergere:</b> Contul meu → <i>Șterge-mi contul definitiv</i>.</li>
+</ul>
+<p>{% if site.contact %}Pentru restul scrie la <a href="mailto:{{ site.contact }}">{{ site.contact }}</a>.
+    {% endif %}Dacă crezi că datele tale nu sunt tratate corect, poți depune o plângere la Autoritatea
+    Națională de Supraveghere a Prelucrării Datelor cu Caracter Personal
+    (<a href="https://www.dataprotection.ro" rel="noopener noreferrer">dataprotection.ro</a>).</p>
+
+<h2>9. Vârsta minimă</h2>
+<p>IamBusy este pentru persoane de cel puțin 16 ani.</p>
+
+<h2>10. Modificări</h2>
+<p>Când politica se schimbă, actualizăm data de sus. Versiunea în vigoare e mereu cea de pe această pagină.</p>
+{% endblock %}

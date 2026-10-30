@@ -10,7 +10,19 @@
 ![Dashboard Preview](assets/screenshot.png)
 
 > **Accounts edition** — a copy of IamBusy where every person has their own
-> account and private schedule. Nothing is visible without logging in.
+> account and private schedule. Live at **[www.iambusy.ro](https://www.iambusy.ro/)**.
+> Visitors only see the home page, the legal pages and the share links people
+> send them; everything else needs an account.
+
+## 🌐 Public website
+
+-   **Home page** (`/` when logged out): what the app does, with sign-in and "Am o invitație" buttons. Logged-in users get their calendar at the same address.
+-   **Legal pages**: privacy policy (`/confidentialitate`, GDPR) and terms (`/termeni`), linked in every footer and on the sign-up form. Operator name and contact come from `OPERATOR_NAME` / `CONTACT_EMAIL`; bump `public.LEGAL_UPDATED` whenever their text changes.
+-   **Your data**: the account page has *Descarcă datele mele* (everything stored about you as JSON, without password / token / PIN hashes) and *Șterge-mi contul definitiv* (password required; the last active admin can't delete themselves).
+-   **One address**: with `SITE_URL` set, any other host name and plain `http://` get a 301 (308 for form posts) to it, and copied links are built from it. Requests by IP or to `localhost` are left alone.
+-   **Search & previews**: `robots.txt`, `sitemap.xml`, canonical links, Open Graph / Twitter cards (share links and friend links get their own titles; PIN-protected links reveal nothing), JSON-LD, a web app manifest with PNG / maskable icons and `favicon.ico`.
+-   **Error pages**: branded 404 / 405 / 500 … pages; `/api/` routes answer with JSON instead.
+-   **No third parties in the page**: the fonts (Space Grotesk, IBM Plex Mono — OFL) are served from `static/fonts/`, so the CSP is `'self'` only and no cookie banner is needed (only strictly necessary cookies).
 
 ## 🔐 Accounts & security
 
@@ -28,7 +40,7 @@
 | Brute force | failed logins limited per IP+account (5 / 15 min), per account and per IP; invite-code guessing limited per IP |
 | Enumeration | identical answer and timing for unknown user / wrong password / disabled account |
 | Data isolation | every query is scoped to the logged-in user id |
-| Browser hardening | strict Content-Security-Policy (no inline scripts), `X-Frame-Options: DENY`, `nosniff`, HSTS, `Cache-Control: no-store` |
+| Browser hardening | strict Content-Security-Policy (no inline scripts, nothing loaded from other sites), `X-Frame-Options: DENY`, `nosniff`, HSTS, `Cache-Control: no-store` |
 | On disk | `schedule.db`, `.secret_key` and `schedule_config.py` are mode `0600` and ignored by git |
 | Friends' calendars | only accepted friends can open them; everything they see goes through one masking layer (`calendar_data.py`), so "busy" blocks never carry a title, place, category or participant list, and overlapping busy blocks are merged |
 | Search | exact username only (no browsing), 40 lookups / 10 min per user; blocked users look like unknown ones |
@@ -84,6 +96,7 @@ A full-featured management page (`/manage`) lets you take control of your schedu
 ```
 iambusy/
 ├── app.py                    # Flask HTTP layer + REST API, security headers
+├── public.py                 # Home page, legal pages, robots/sitemap/manifest, error pages, canonical host
 ├── auth.py                   # Login, registration, sessions, CSRF, rate limits, admin
 ├── social.py                 # Friends, groups, privacy rules, invites, friend links, free time
 ├── sharing.py                # Public share links (no account needed)
@@ -99,6 +112,9 @@ iambusy/
 ├── schedule_config.py        # Your settings (created by setup.sh, not in git)
 ├── static/
 │   ├── style.css             # Neobrutalist design system (tokens, components)
+│   ├── fonts/                # Self-hosted woff2 fonts + fonts.css
+│   ├── icons/                # App icons, Open Graph image
+│   ├── favicon.ico
 │   ├── schedule.js           # Live clock, month calendar, navigation, theme
 │   ├── manage.js             # Schedule management UI (grid, drag & drop, modals, invites)
 │   ├── social.js             # Small helpers for the privacy / share pages
@@ -107,6 +123,9 @@ iambusy/
 │   └── theme.js              # Applies the saved theme before first paint
 ├── templates/
 │   ├── index.html            # Day view (own, friend's, preview, public share)
+│   ├── landing.html          # Public home page
+│   ├── legal_base.html / legal_privacy.html / legal_terms.html / error.html
+│   ├── _head_assets.html / _seo.html / _footer.html  # Shared head, link-preview meta, footer
 │   ├── friends.html / privacy.html / shares.html / freetime.html / notifications.html
 │   ├── friend_link.html / share_pin.html / share_gone.html
 │   ├── manage.html           # Schedule management page
@@ -227,7 +246,9 @@ Everything lives in `schedule_config.py` (created by `setup.sh`, ignored by git)
 | `SESSION_DAYS`         | How long a remembered device stays logged in (sliding, default 30) |
 | `SHORT_SESSION_HOURS`  | Session length when "remember me" is unticked (default 12)   |
 | `COOKIE_SECURE`        | `True` behind HTTPS (default); `False` only for plain-HTTP LAN use |
-| `TRUSTED_PROXIES`      | Networks allowed to report the visitor IP (`CF-Connecting-IP`) |
+| `TRUSTED_PROXIES`      | Networks allowed to report the visitor IP (`CF-Connecting-IP`) and scheme (`X-Forwarded-Proto`) |
+| `SITE_URL`             | The public address, e.g. `https://www.iambusy.ro` — canonical redirect + copied links (`""` = off) |
+| `OPERATOR_NAME`, `CONTACT_EMAIL` | Who runs the site, shown in the footer and the legal pages |
 
 Restart the app after editing it. Schedules are stored in `schedule.db` and edited through `/manage`.
 

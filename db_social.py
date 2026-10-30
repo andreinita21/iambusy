@@ -891,3 +891,77 @@ def count_rows(table: str, user_col: str, user_id: int) -> int:
 
 
 IntegrityError = sqlite3.IntegrityError
+
+
+# ═══════════════════════════════════════════════════ Data export ══
+
+def export_user_data(user_id: int) -> dict:
+    """Everything stored about one account, for the "download my data" button.
+
+    Secrets that only exist as hashes (password, session tokens, share PINs)
+    are left out; other people are named by username, never by internal id.
+    """
+    conn = _get_conn()
+
+    def rows(sql, *params):
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+    user = dict(conn.execute(
+        "SELECT u.username, u.display_name, u.week1_start, u.is_admin, u.created_at, "
+        "u.last_login_at, inviter.username AS invited_by "
+        "FROM users u LEFT JOIN users inviter ON inviter.id = u.invited_by WHERE u.id = ?",
+        (user_id,)).fetchone())
+    data = {
+        "account": user,
+        "categories": rows("SELECT id, name, color, position, created_at FROM categories "
+                           "WHERE user_id = ? ORDER BY position, id", user_id),
+        "activities": rows("SELECT id, title, day, start_time, end_time, week_type, date, "
+                           "valid_from, valid_until, category_id FROM activities "
+                           "WHERE user_id = ? ORDER BY id", user_id),
+        "activity_invitees": rows(
+            "SELECT p.activity_id, u.username, p.status, p.invited_at, p.responded_at "
+            "FROM activity_participants p JOIN activities a ON a.id = p.activity_id "
+            "JOIN users u ON u.id = p.user_id WHERE a.user_id = ? ORDER BY p.activity_id",
+            user_id),
+        "invited_to": rows(
+            "SELECT a.title, a.day, a.start_time, a.end_time, a.week_type, a.date, "
+            "a.valid_from, a.valid_until, owner.username AS organiser, p.status, "
+            "p.category_id, p.invited_at, p.responded_at "
+            "FROM activity_participants p JOIN activities a ON a.id = p.activity_id "
+            "JOIN users owner ON owner.id = a.user_id WHERE p.user_id = ? ORDER BY a.id",
+            user_id),
+        "friends": rows(
+            "SELECT u.username, u.display_name, f.status, "
+            "CASE WHEN f.requester_id = ? THEN 'sent' ELSE 'received' END AS request, "
+            "f.created_at, f.accepted_at "
+            "FROM friendships f JOIN users u ON u.id = "
+            "CASE WHEN f.user_lo = ? THEN f.user_hi ELSE f.user_lo END "
+            "WHERE ? IN (f.user_lo, f.user_hi) ORDER BY f.id", user_id, user_id, user_id),
+        "blocked": rows("SELECT u.username, b.created_at FROM blocks b "
+                        "JOIN users u ON u.id = b.blocked_id WHERE b.blocker_id = ?", user_id),
+        "groups": rows("SELECT id, name, color, created_at FROM friend_groups WHERE owner_id = ? "
+                       "ORDER BY id", user_id),
+        "group_members": rows(
+            "SELECT m.group_id, u.username FROM friend_group_members m "
+            "JOIN friend_groups gr ON gr.id = m.group_id JOIN users u ON u.id = m.member_id "
+            "WHERE gr.owner_id = ? ORDER BY m.group_id", user_id),
+        "category_rules": rows(
+            "SELECT r.category_id, r.subject_type, r.subject_id, r.level FROM category_rules r "
+            "JOIN categories c ON c.id = r.category_id WHERE c.user_id = ?", user_id),
+        "activity_rules": rows("SELECT activity_id, subject_type, subject_id, level "
+                               "FROM activity_rules WHERE user_id = ?", user_id),
+        "notifications": rows(
+            "SELECT n.kind, actor.username AS actor, n.text, n.created_at, n.read_at "
+            "FROM notifications n LEFT JOIN users actor ON actor.id = n.actor_id "
+            "WHERE n.user_id = ? ORDER BY n.id", user_id),
+        "friend_links": rows("SELECT code, note, max_uses, uses, expires_at, revoked, created_at "
+                             "FROM friend_links WHERE user_id = ? ORDER BY id", user_id),
+        "share_links": rows("SELECT * FROM share_links WHERE user_id = ? ORDER BY id", user_id),
+        "devices": rows("SELECT user_agent, ip, persistent, created_at, last_seen, expires_at "
+                        "FROM sessions WHERE user_id = ? ORDER BY id", user_id),
+    }
+    for link in data["share_links"]:
+        link.pop("user_id", None)
+        link["has_pin"] = bool(link.pop("pin_hash", None))
+    conn.close()
+    return data

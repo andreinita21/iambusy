@@ -37,3 +37,16 @@ COOKIE_SECURE: bool = True
 # cannot be spoofed from the LAN.  Defaults: loopback + Docker bridges
 # (cloudflared running in a container).  Use [] when there is no proxy.
 TRUSTED_PROXIES: list = ["127.0.0.0/8", "172.16.0.0/12"]
+
+# ──────────────────────── public website ──
+# The site's one public address.  Requests that arrive under any other host
+# name (iambusy.ro without www, an old tunnel name, …) or over plain http get
+# a permanent redirect here, and every copied link (share links, friend
+# links, invite codes) is built from it.  Requests by IP address or to
+# localhost are left alone, so LAN access and development keep working.
+# "" turns this off and links use whatever address the visitor typed.
+SITE_URL: str = ""  # e.g. "https://www.iambusy.ro"
+# Shown on the privacy policy and the terms (GDPR wants the data controller
+# named, with a way to reach them) and in the page footer.
+OPERATOR_NAME: str = ""
+CONTACT_EMAIL: str = ""

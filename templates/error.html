@@ -1,0 +1,16 @@
+{% extends "auth_base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<section class="auth-card error-card" aria-labelledby="auth-title">
+    <header class="auth-head {{ 'auth-head-yellow' if code < 500 else 'error-head-red' }}">
+        <span class="tag tag-ink">Eroare {{ code }}</span>
+        <p class="error-code mono" aria-hidden="true">{{ code }}</p>
+        <h1 class="auth-title" id="auth-title">{{ title }}</h1>
+        <p class="auth-lead">{{ message }}</p>
+    </header>
+    <div class="auth-form">
+        <a class="btn btn-primary btn-block" href="/">Mergi la pagina principală</a>
+    </div>
+</section>
+{% endblock %}

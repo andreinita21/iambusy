@@ -1,0 +1,118 @@
+{% extends "auth_base.html" %}
+{% from "_seo.html" import social_meta with context %}
+{% block full_title %}IamBusy — Orarul tău, în timp real{% endblock %}
+{% block body_class %}site-page{% endblock %}
+{% block shell_class %}site-shell{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block meta %}
+    <meta name="description" content="Orarul tău săptămânal în timp real: vezi dintr-o privire când ești liber, împarte-l cu prietenii exact cât vrei și trimite un link oricui, fără cont.">
+    <link rel="canonical" href="{{ site.url }}/">
+    {{ social_meta("IamBusy — Orarul tău, în timp real",
+                   "Vezi dintr-o privire când ești liber. Prietenii văd doar cât vrei tu.", path="/") }}
+    <script type="application/ld+json">
+    {"@context": "https://schema.org", "@type": "WebApplication", "name": "IamBusy",
+     "url": "{{ site.url }}/", "inLanguage": "ro", "applicationCategory": "ProductivityApplication",
+     "operatingSystem": "Web", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RON"},
+     "description": "Orar săptămânal în timp real, cu prieteni, reguli de vizibilitate și linkuri publice."}
+    </script>
+{% endblock %}
+
+{% block actions %}
+<a href="/login" class="btn btn-primary">Intră în cont</a>
+{% endblock %}
+
+{% block content %}
+<section class="site-hero" aria-labelledby="hero-title">
+    <div class="hero-text">
+        <span class="tag tag-ink">Orar · Prieteni · Linkuri</span>
+        <h1 class="hero-title" id="hero-title">Știi mereu când ești <mark>ocupat</mark>.</h1>
+        <p class="hero-lead">IamBusy îți arată orarul în timp real — ce faci acum, până când și cât timp
+            liber ai până la următoarea activitate. Prietenii văd doar cât vrei tu, iar oricui altcuiva
+            îi poți trimite un link, fără să-și facă cont.</p>
+        <div class="hero-cta">
+            <a href="/login" class="btn btn-primary btn-lg">Intră în cont</a>
+            <a href="/register" class="btn btn-accent btn-lg">Am o invitație</a>
+        </div>
+        <p class="hint">Conturile se fac doar cu invitație — de la administrator sau prin linkul unui prieten.</p>
+    </div>
+
+    <div class="hero-demo" aria-hidden="true">
+        <div class="demo-status">
+            <span class="demo-dot"></span>
+            <span><b>Ana</b> e liberă până la 14:00</span>
+        </div>
+        <div class="demo-day">
+            <span class="demo-label">Luni · azi</span>
+            <div class="demo-block demo-blue"><b>Curs POO</b><span>08:00–10:00</span></div>
+            <div class="demo-block demo-free"><b>Liber</b><span>10:00–14:00</span></div>
+            <div class="demo-block demo-busy"><b>Ocupat</b><span>14:00–16:00</span></div>
+            <div class="demo-block demo-purple"><b>Laborator SO</b><span>16:00–18:00</span></div>
+        </div>
+    </div>
+</section>
+
+<section class="site-section" aria-labelledby="features-title">
+    <h2 class="site-h2" id="features-title">Ce poți face</h2>
+    <div class="feature-grid">
+        <article class="feature">
+            <span class="feature-mark fm-yellow" aria-hidden="true">01</span>
+            <h3>Orar săptămânal</h3>
+            <p>Săptămâni pare și impare, activități care se repetă doar într-un interval sau care au loc
+                o singură dată. Te avertizează când ceva se suprapune.</p>
+        </article>
+        <article class="feature">
+            <span class="feature-mark fm-lime" aria-hidden="true">02</span>
+            <h3>Starea ta, acum</h3>
+            <p>„Liber până la 14:00”, ce urmează, golurile din zi și un calendar pe lună — pe telefon
+                sau pe calculator.</p>
+        </article>
+        <article class="feature">
+            <span class="feature-mark fm-cyan" aria-hidden="true">03</span>
+            <h3>Prieteni</h3>
+            <p>Îi adaugi după numele de utilizator sau le trimiți un link de prietenie. Le vezi
+                programul și găsiți împreună ore libere comune.</p>
+        </article>
+        <article class="feature">
+            <span class="feature-mark fm-pink" aria-hidden="true">04</span>
+            <h3>Tu alegi cine ce vede</h3>
+            <p>Complet, doar „ocupat” sau ascuns — pe categorii, pe grupuri, pe prieteni sau pe o
+                singură activitate. Ce ascunzi rămâne roșu: ocupat, fără detalii.</p>
+        </article>
+        <article class="feature">
+            <span class="feature-mark fm-orange" aria-hidden="true">05</span>
+            <h3>Invitații la activități</h3>
+            <p>Îți chemi prietenii la o activitate. Cine acceptă o are și în calendarul lui, iar
+                prietenii lui văd că e ocupat.</p>
+        </article>
+        <article class="feature">
+            <span class="feature-mark fm-purple" aria-hidden="true">06</span>
+            <h3>Linkuri publice</h3>
+            <p>Pentru oricine, fără cont: doar liber / ocupat sau cu detalii, pe un interval ales, cu
+                dată de expirare și PIN, dacă vrei.</p>
+        </article>
+    </div>
+</section>
+
+<section class="site-section" aria-labelledby="how-title">
+    <h2 class="site-h2" id="how-title">Cum începi</h2>
+    <ol class="steps">
+        <li><b>Primești o invitație</b><span>Un cod de la administrator sau linkul de prietenie al
+            cuiva care folosește deja IamBusy.</span></li>
+        <li><b>Îți faci orarul</b><span>Adaugi activitățile o dată; le muți cu drag &amp; drop când se
+            schimbă ceva.</span></li>
+        <li><b>Îl împarți cât vrei</b><span>Prietenilor, unui grup sau printr-un link — fiecare vede
+            exact nivelul de detaliu pe care l-ai ales.</span></li>
+    </ol>
+</section>
+
+<section class="site-promise" aria-labelledby="promise-title">
+    <h2 class="site-h2" id="promise-title">Datele tale rămân ale tale</h2>
+    <ul>
+        <li>Fără reclame, fără trackere, fără cookie-uri de marketing.</li>
+        <li>Nu cerem e-mail sau telefon — doar un nume de utilizator și o parolă.</li>
+        <li>Îți descarci datele sau îți ștergi contul oricând, din pagina contului.</li>
+    </ul>
+    <a href="/confidentialitate" class="btn">Politica de confidențialitate</a>
+</section>
+{% endblock %}

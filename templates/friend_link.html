@@ -1,5 +1,15 @@
 {% extends "auth_base.html" %}
 {% block title %}Invitație de prietenie{% endblock %}
+{% block meta %}
+    {% from "_seo.html" import social_meta with context %}
+    <meta name="robots" content="noindex, nofollow">
+    {% if link %}
+    {{ social_meta(link.display_name ~ " te invită pe IamBusy",
+                   "Fiți prieteni pe IamBusy și vedeți unul altuia când sunteți liberi.") }}
+    {% else %}
+    {{ social_meta("Invitație IamBusy", "Linkul de prietenie nu mai este valid.") }}
+    {% endif %}
+{% endblock %}
 
 {% block content %}
 <section class="auth-card" aria-labelledby="auth-title">

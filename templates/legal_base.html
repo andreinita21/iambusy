@@ -1,0 +1,25 @@
+{% extends "auth_base.html" %}
+{% from "_seo.html" import social_meta with context %}
+{% block body_class %}site-page{% endblock %}
+{% block shell_class %}site-shell legal-shell{% endblock %}
+{% block deco %}{% endblock %}
+
+{% block meta %}
+    <meta name="description" content="{% block description %}{% endblock %}">
+    <link rel="canonical" href="{{ site.url }}{{ request.path }}">
+    {{ social_meta(self.title() ~ " — IamBusy", self.description()) }}
+{% endblock %}
+
+{% block actions %}
+{% if g.user %}<a href="/" class="btn">Orar</a>{% else %}<a href="/login" class="btn btn-primary">Intră în cont</a>{% endif %}
+{% endblock %}
+
+{% block content %}
+<nav class="legal-nav" aria-label="Documente">
+    <a href="/confidentialitate" {% if request.path == '/confidentialitate' %}aria-current="page"{% endif %}>Confidențialitate</a>
+    <a href="/termeni" {% if request.path == '/termeni' %}aria-current="page"{% endif %}>Termeni</a>
+</nav>
+<article class="legal">
+    {% block legal %}{% endblock %}
+</article>
+{% endblock %}

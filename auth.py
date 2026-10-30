@@ -18,6 +18,7 @@ Security model
 import hashlib
 import hmac
 import ipaddress
+import json
 import os
 import re
 import secrets
@@ -28,7 +29,7 @@ from functools import wraps
 from urllib.parse import urlsplit
 
 from flask import (
-    Blueprint, abort, flash, g, jsonify, redirect, render_template, request,
+    Blueprint, Response, abort, flash, g, jsonify, redirect, render_template, request,
     session, url_for,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -50,6 +51,7 @@ INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
 # Rate limits: (max failures, window in seconds)
 LIMIT_LOGIN_PAIR = (5, 15 * 60)     # same IP hammering the same account
 LIMIT_LOGIN_USER = (25, 60 * 60)    # one account attacked from many IPs
+LIMIT_DELETE = (5, 15 * 60)         # wrong passwords on "delete my account"
 LIMIT_LOGIN_IP = (30, 15 * 60)      # one IP spraying many accounts
 LIMIT_REGISTER_IP = (8, 60 * 60)    # invite-code guessing
 
@@ -71,12 +73,14 @@ _settings = {
     "cookie_secure": False,
     "trusted_proxies": [],
     "default_week1_start": date.today(),
+    "site_url": "",
 }
 
 
 def configure(*, session_days, short_session_hours, cookie_secure, trusted_proxies,
-              default_week1_start):
+              default_week1_start, site_url=""):
     _settings.update(
+        site_url=(site_url or "").strip().rstrip("/"),
         trusted_proxies=[ipaddress.ip_network(n) for n in trusted_proxies],
         session_days=max(1, int(session_days)),
         short_session_hours=max(1, int(short_session_hours)),
@@ -189,12 +193,18 @@ def _parse_ip(raw):
         return None
 
 
+def from_trusted_proxy() -> bool:
+    """Did this request come through our reverse proxy (so its headers count)?"""
+    peer = _parse_ip(request.remote_addr)
+    return peer is not None and any(peer in net for net in _settings["trusted_proxies"])
+
+
 def client_ip() -> str:
     """Visitor address — forwarded headers count only from a trusted proxy."""
     peer = _parse_ip(request.remote_addr)
     if peer is None:
         return (request.remote_addr or "")[:64]
-    if any(peer in net for net in _settings["trusted_proxies"]):
+    if from_trusted_proxy():
         forwarded = _parse_ip(request.headers.get("CF-Connecting-IP")) or _parse_ip(
             (request.headers.get("X-Forwarded-For") or "").split(",")[-1])
         if forwarded is not None:
@@ -308,7 +318,9 @@ def csrf_protect():
 # ══════════════════════════════════════════════════ Decorators ══
 
 def absolute_url(path: str) -> str:
-    """Full link to *path* for copying / sharing (https behind the proxy)."""
+    """Full link to *path* for copying / sharing — on the public address when set."""
+    if _settings["site_url"]:
+        return _settings["site_url"] + path
     scheme = "https" if _settings["cookie_secure"] else request.scheme
     return f"{scheme}://{request.host}{path}"
 
@@ -607,6 +619,41 @@ def account_revoke_others():
     dropped = db.delete_user_sessions(g.user["id"], except_session_id=g.user["session_id"])
     flash(f"{dropped} alte dispozitive au fost deconectate.", "ok")
     return redirect(url_for("auth.account"))
+
+
+@bp.route("/account/export")
+@login_required
+def account_export():
+    """Download everything stored about this account as JSON (GDPR art. 15/20)."""
+    data = db_social.export_user_data(g.user["id"])
+    data = {"exported_at": datetime.now().isoformat(timespec="seconds"), **data}
+    filename = f"iambusy-{g.user['username']}-{date.today().isoformat()}.json"
+    return Response(json.dumps(data, ensure_ascii=False, indent=2), mimetype="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@bp.route("/account/delete", methods=["POST"])
+@login_required
+def account_delete():
+    """Delete my own account and everything in it, after re-entering the password."""
+    user = db.get_user(g.user["id"])
+    password = request.form.get("password") or ""
+    key = f"delete:{user['id']}"
+    if _limited(key, LIMIT_DELETE):
+        flash("Prea multe încercări. Așteaptă câteva minute.", "error")
+    elif not verify_password(user["password_hash"], password):
+        db.record_attempt(key)
+        flash("Parola nu e corectă — contul nu a fost șters.", "error")
+    elif user["is_admin"] and not any(
+            u["is_admin"] and u["is_active"] and u["id"] != user["id"] for u in db.list_users()):
+        flash("Ești singurul administrator. Fă pe altcineva administrator înainte să-ți "
+              "ștergi contul.", "error")
+    else:
+        end_session()
+        db.delete_user(user["id"])
+        flash("Contul tău și toate datele lui au fost șterse definitiv.", "ok")
+        return redirect("/")
+    return redirect(url_for("auth.account") + "#delete")
 
 
 # ═══════════════════════════════════════════════ Admin panel ══

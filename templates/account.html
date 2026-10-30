@@ -108,4 +108,28 @@
         {% endfor %}
     </ul>
 </section>
+
+<section class="panel-card" aria-labelledby="data-title">
+    <h2 class="panel-card-title" id="data-title">Datele tale</h2>
+    <p class="hint">Un fișier JSON cu tot ce păstrăm despre contul tău: profil, orar, categorii, prieteni,
+        reguli de vizibilitate, invitații, notificări, linkuri și dispozitive.
+        Vezi și <a href="/confidentialitate">politica de confidențialitate</a>.</p>
+    <a class="btn" href="/account/export" download>Descarcă datele mele</a>
+</section>
+
+<section class="panel-card panel-danger" id="delete" aria-labelledby="delete-title">
+    <h2 class="panel-card-title" id="delete-title">Șterge contul</h2>
+    <p class="hint">Șterge definitiv contul, orarul, prieteniile, linkurile și tot restul. Activitățile la
+        care i-ai invitat pe alții dispar și din calendarele lor. Nu se poate anula.</p>
+    <form class="auth-form" method="post" action="/account/delete">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="username" value="{{ user.username }}" autocomplete="username" hidden>
+        <div class="field">
+            <label for="delete_password">Parola, pentru confirmare</label>
+            <input class="input" type="password" id="delete_password" name="password"
+                autocomplete="current-password" maxlength="128" required>
+        </div>
+        <button type="submit" class="btn btn-danger">Șterge-mi contul definitiv</button>
+    </form>
+</section>
 {% endblock %}

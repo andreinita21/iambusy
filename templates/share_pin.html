@@ -1,5 +1,10 @@
 {% extends "auth_base.html" %}
 {% block title %}Program protejat{% endblock %}
+{% block meta %}
+    {% from "_seo.html" import social_meta with context %}
+    <meta name="robots" content="noindex, nofollow">
+    {{ social_meta("Program partajat pe IamBusy", "Programul e protejat cu un PIN — cere-l persoanei care ți-a trimis linkul.") }}
+{% endblock %}
 
 {% block content %}
 <section class="auth-card" aria-labelledby="auth-title">
