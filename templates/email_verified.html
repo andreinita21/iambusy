@@ -1,0 +1,44 @@
+{% extends "auth_base.html" %}
+{% block title %}Confirmarea adresei de email{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="auth-title">
+    {% if state in ('ok', 'already') %}
+    <header class="auth-head auth-head-lime">
+        <span class="tag tag-ink">Adresa de email</span>
+        <h1 class="auth-title" id="auth-title">{{ 'Adresă confirmată' if state == 'ok' else 'Deja confirmată' }}</h1>
+        <p class="auth-lead"><b class="mono">{{ email }}</b>
+            {{ 'este acum legată de contul tău.' if state == 'ok' else 'era deja confirmată — nu mai trebuie făcut nimic.' }}</p>
+    </header>
+    <div class="auth-form">
+        {% if user %}
+        <a class="btn btn-primary btn-block" href="/">Deschide IamBusy</a>
+        {% else %}
+        <p class="hint">Dacă ai deschis linkul pe alt dispozitiv sau din aplicația de email, conectează-te
+            aici — poți folosi numele de utilizator sau adresa de email.</p>
+        <a class="btn btn-primary btn-block" href="/login">Conectează-te</a>
+        {% endif %}
+    </div>
+
+    {% elif state == 'taken' %}
+    <header class="auth-head">
+        <span class="tag tag-ink">Adresa de email</span>
+        <h1 class="auth-title" id="auth-title">Adresă deja folosită</h1>
+        <p class="auth-lead"><b class="mono">{{ email }}</b> este confirmată pe alt cont IamBusy. Folosește
+            altă adresă sau conectează-te în contul acela.</p>
+    </header>
+    <div class="auth-form"><a class="btn btn-primary btn-block" href="{{ '/account#email' if user else '/login' }}">
+        {{ 'Înapoi la cont' if user else 'Conectează-te' }}</a></div>
+
+    {% else %}
+    <header class="auth-head">
+        <span class="tag tag-ink">Adresa de email</span>
+        <h1 class="auth-title" id="auth-title">Link expirat</h1>
+        <p class="auth-lead">Linkul de confirmare nu mai este valid: a trecut de 24 de ore sau ai cerut între timp
+            unul nou (doar cel mai recent funcționează). Conectează-te și cere încă un email.</p>
+    </header>
+    <div class="auth-form"><a class="btn btn-primary btn-block" href="{{ '/confirm-email' if user and not user.email else ('/account#email' if user else '/login') }}">
+        {{ 'Trimite alt link' if user else 'Conectează-te' }}</a></div>
+    {% endif %}
+</section>
+{% endblock %}

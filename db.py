@@ -957,6 +957,16 @@ def get_email_token(purpose: str, token_hash: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def find_email_token(purpose: str, token_hash: str) -> Optional[dict]:
+    """The token whatever its state (used, expired) — to tell a second click apart from a bad link."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT t.*, u.email AS current_email FROM email_tokens t JOIN users u ON u.id = t.user_id "
+        "WHERE t.purpose = ? AND t.token_hash = ?", (purpose, token_hash)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def use_email_token(token_id: int) -> bool:
     """Mark a token used; ``False`` if someone else got there first."""
     conn = _get_conn()

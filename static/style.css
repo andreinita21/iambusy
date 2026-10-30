@@ -2151,6 +2151,7 @@ kbd {
 .auth-head {
   padding: var(--sp-5) var(--sp-5) var(--sp-4);
   border-bottom: var(--bw) solid var(--line);
+  background: var(--yellow);
   color: var(--on-accent);
 }
 

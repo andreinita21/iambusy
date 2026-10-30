@@ -224,20 +224,18 @@ def email_required():
 
 @bp.route("/account/email/verify/<token>")
 def verify_email(token):
-    record = db.get_email_token("verify", _hash_token(token)) if len(token) < 100 else None
-    if g.user is None:
-        target = url_for("auth.login")
-    elif g.user["email"]:
-        target = url_for("auth.account") + "#email"
-    else:
-        target = url_for("index")  # first confirmed address: the app opens up
+    """Confirms on the first open and says so on its own page — mail apps often open links in
+    a browser without the IamBusy session, and people tap the button a second time."""
+    token_hash = _hash_token(token) if len(token) < 100 else ""
+    record = db.get_email_token("verify", token_hash) if token_hash else None
     if record is None:
-        flash("Linkul de confirmare nu mai este valid. Cere unul nou din pagina contului.", "error")
-        return redirect(target)
+        used = db.find_email_token("verify", token_hash) if token_hash else None
+        done = bool(used and used["used_at"] and used["current_email"] == used["email"])
+        return _verified_page("already" if done else "invalid", used["email"] if done else "",
+                              200 if done else 404)
     old = record["current_email"]
     if not db.set_verified_email(record["user_id"], record["email"]):
-        flash("Această adresă este deja folosită de alt cont.", "error")
-        return redirect(target)
+        return _verified_page("taken", record["email"], 409)
     db.use_email_token(record["id"])
     db.drop_email_tokens(record["user_id"], "reset")  # links sent to the old address
     if old and old != record["email"]:
@@ -246,9 +244,11 @@ def verify_email(token):
             [f"Contul @{record['username']} folosește de acum altă adresă de email "
              "pentru resetarea parolei.",
              "Dacă n-ai fost tu, schimbă-ți parola și scrie-ne răspunzând la acest mesaj."]))
-    flash(f"Adresa {record['email']} a fost confirmată.", "ok")
-    return redirect(target)
+    return _verified_page("ok", record["email"])
 
+
+def _verified_page(state: str, email: str, status: int = 200):
+    return render_template("email_verified.html", user=g.user, state=state, email=email), status
 
 
 @bp.route("/account/notifications", methods=["POST"])
