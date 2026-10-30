@@ -13,6 +13,7 @@ Colour themes: every account can pick how the site looks for them.
 
 import json
 import re
+from typing import Optional
 
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 from markupsafe import Markup
@@ -128,7 +129,7 @@ def luminance(hex_color: str) -> float:
     return 0.2126 * r + 0.7152 * g_ + 0.0722 * b
 
 
-def clean_colors(raw) -> dict | None:
+def clean_colors(raw) -> Optional[dict]:
     """All colours as lowercase ``#rrggbb``, or ``None`` if any is missing / invalid.
 
     ``line`` came later: themes saved before it existed outline in the text colour.
@@ -176,7 +177,7 @@ def stylesheet(colors: dict, derived: dict = None) -> str:
 
 # ════════════════════════════════════════════════ Active theme ══
 
-def resolve(user) -> tuple[str, str, dict | None, dict]:
+def resolve(user) -> tuple[str, str, Optional[dict], dict]:
     """``(key, name, colors, derived)`` of *user*'s theme; ``colors`` is ``None`` for the default."""
     key = (user["theme"] if user and "theme" in user.keys() else "") or ""
     if key.startswith("preset:") and key[7:] in PRESETS:
