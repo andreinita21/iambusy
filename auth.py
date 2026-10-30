@@ -29,7 +29,7 @@ from functools import wraps
 from urllib.parse import urlsplit
 
 from flask import (
-    Blueprint, Response, abort, flash, g, jsonify, redirect, render_template, request,
+    Blueprint, Response, abort, current_app, flash, g, jsonify, redirect, render_template, request,
     session, url_for,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -40,6 +40,11 @@ import db_social
 bp = Blueprint("auth", __name__)
 
 SESSION_COOKIE = "iambusy_auth"
+# Marks a browser that has logged in to an account before.  The per-account
+# login limit (which anyone could trip on purpose to lock the owner out) does
+# not apply to it; the per-IP limits still do.
+DEVICE_COOKIE = "iambusy_device"
+DEVICE_COOKIE_DAYS = 365
 HASH_METHOD = "scrypt:32768:8:1"
 
 USERNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])$")
@@ -53,7 +58,8 @@ LIMIT_LOGIN_PAIR = (5, 15 * 60)     # same IP hammering the same account
 LIMIT_LOGIN_USER = (25, 60 * 60)    # one account attacked from many IPs
 LIMIT_DELETE = (5, 15 * 60)         # wrong passwords on "delete my account"
 LIMIT_LOGIN_IP = (30, 15 * 60)      # one IP spraying many accounts
-LIMIT_REGISTER_IP = (8, 60 * 60)    # invite-code guessing
+LIMIT_REGISTER_IP = (8, 60 * 60)    # sign-ups and invite-code guesses per IP
+MAX_FRIEND_SIGNUPS_PER_DAY = 10     # new accounts through one person's friend links
 
 COMMON_PASSWORDS = frozenset({
     "1234567890", "12345678910", "123456789a", "qwertyuiop", "qwerty12345",
@@ -260,8 +266,30 @@ def load_current_user() -> None:
         g.set_auth_cookie = (token, persistent)
 
 
+def _device_mark(username: str) -> str:
+    key = current_app.secret_key
+    return hmac.new(key if isinstance(key, bytes) else key.encode(),
+                    f"device:{username}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def known_device(username: str) -> bool:
+    sent = request.cookies.get(DEVICE_COOKIE, "")
+    return any(hmac.compare_digest(mark, _device_mark(username)) for mark in sent.split(".")[:5])
+
+
+def remember_device(username: str) -> None:
+    marks = [m for m in request.cookies.get(DEVICE_COOKIE, "").split(".")[:5] if m]
+    mark = _device_mark(username)
+    g.set_device_cookie = ".".join([mark] + [m for m in marks if m != mark][:4])
+
+
 def apply_auth_cookie(response):
     """``after_request`` hook: set / refresh / clear the auth cookie."""
+    device = g.pop("set_device_cookie", None)
+    if device:
+        response.set_cookie(DEVICE_COOKIE, device, max_age=DEVICE_COOKIE_DAYS * 86400,
+                            httponly=True, samesite="Lax", secure=_settings["cookie_secure"],
+                            path="/")
     pending = g.pop("set_auth_cookie", None)
     if pending:
         token, persistent = pending
@@ -377,8 +405,8 @@ def login():
         ip = client_ip()
         keys = {"pair": f"login:{ip}:{username}", "user": f"login-user:{username}",
                 "ip": f"login-ip:{ip}"}
-        if (_limited(keys["pair"], LIMIT_LOGIN_PAIR) or _limited(keys["user"], LIMIT_LOGIN_USER)
-                or _limited(keys["ip"], LIMIT_LOGIN_IP)):
+        if (_limited(keys["pair"], LIMIT_LOGIN_PAIR) or _limited(keys["ip"], LIMIT_LOGIN_IP)
+                or (_limited(keys["user"], LIMIT_LOGIN_USER) and not known_device(username))):
             flash("Prea multe încercări. Așteaptă câteva minute și încearcă din nou.", "error")
             return render_template("login.html", username=username, next_url=next_url), 429
 
@@ -393,6 +421,7 @@ def login():
 
         db.clear_attempts(keys["pair"], keys["user"])
         start_session(user["id"], persistent=remember)
+        remember_device(user["username"])
         return redirect(next_url)
 
     return render_template("login.html", username=username, next_url=next_url)
@@ -427,6 +456,9 @@ def register():
             flash("Prea multe încercări. Încearcă din nou peste o oră.", "error")
             return render_template("register.html", form=form), 429
         link = db_social.get_usable_friend_link(friend_code) if friend_signup_enabled() else None
+        if link is not None and db_social.count_invited_since(
+                link["user_id"], int(time.time()) - 86400) >= MAX_FRIEND_SIGNUPS_PER_DAY:
+            link = None
         if link is None:
             db.record_attempt(ip_key)
             flash("Linkul de prietenie nu mai este valid sau nu poate crea conturi. "
@@ -492,7 +524,10 @@ def register():
             flash("Codul de invitație nu este valid sau a expirat.", "error")
             return render_template("register.html", form=form), 400
 
+        # Successful sign-ups count too: one visitor can't mint accounts in bulk.
+        db.record_attempt(ip_key)
         start_session(user_id, persistent=True)
+        remember_device(form["username"])
         if form["friend"]:
             flash(f"Cont creat. Tu și {form['friend_owner']['display_name']} sunteți acum "
                   "prieteni.", "ok")

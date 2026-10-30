@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#17171c">
     <title>{% block full_title %}IamBusy — {% block title %}{% endblock %}{% endblock %}</title>
 
-    <script src="/static/theme.js"></script>
+    <script src="{{ asset('theme.js') }}"></script>
 
 {% include "_head_assets.html" %}
 </head>
@@ -66,7 +66,7 @@
         {% block footer %}{% include "_footer.html" %}{% endblock %}
     </div>
 
-    <script src="/static/auth.js"></script>
+    <script src="{{ asset('auth.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 

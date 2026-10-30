@@ -11,13 +11,15 @@ search engine, or a chat app building a link preview) can reach.
 * Branded error pages (JSON for ``/api/`` routes).
 """
 
+import hashlib
 import ipaddress
 import json
-from datetime import date
+import os
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote, urlsplit
 
 from flask import (
-    Blueprint, Response, current_app, jsonify, redirect, render_template, request,
+    Blueprint, Response, abort, current_app, jsonify, redirect, render_template, request,
     send_from_directory,
 )
 from werkzeug.exceptions import HTTPException
@@ -36,7 +38,8 @@ SITE_DESCRIPTION = ("Orarul tău săptămânal în timp real: vezi dintr-o privi
 THEME_COLOR = "#17171c"
 
 # Responses browsers and Cloudflare may keep (everything else is no-store).
-CACHEABLE_ENDPOINTS = {"public.robots", "public.sitemap", "public.manifest", "public.favicon"}
+CACHEABLE_ENDPOINTS = {"public.robots", "public.sitemap", "public.manifest", "public.favicon",
+                       "public.security_txt"}
 
 _settings = {"site_url": "", "host": "", "scheme": "", "operator": "", "contact": "",
              "session_days": 30, "short_session_hours": 12}
@@ -75,6 +78,25 @@ def template_globals() -> dict:
         "session_days": _settings["session_days"],
         "short_session_hours": _settings["short_session_hours"],
     }}
+
+
+_asset_versions: dict = {}
+
+
+def asset_url(name: str) -> str:
+    """``/static/<name>?v=<content hash>`` — browsers and Cloudflare keep static
+    files for hours, so a changed file must get a new URL to be fetched again."""
+    version = _asset_versions.get(name)
+    if version is None:
+        path = os.path.join(current_app.static_folder, name)
+        try:
+            with open(path, "rb") as fh:
+                version = hashlib.sha256(fh.read()).hexdigest()[:10]
+        except OSError:
+            version = ""
+        if not current_app.debug:
+            _asset_versions[name] = version
+    return f"/static/{name}?v={version}" if version else f"/static/{name}"
 
 
 # ═════════════════════════════════════════════ Canonical host ══
@@ -145,6 +167,22 @@ def robots():
         "Disallow: /admin",
         "",
         f"Sitemap: {site_url()}/sitemap.xml",
+        "",
+    ])
+    return Response(body, mimetype="text/plain")
+
+
+@bp.route("/.well-known/security.txt")
+def security_txt():
+    """Where to report a vulnerability (RFC 9116) — only when a contact is set."""
+    if not _settings["contact"]:
+        abort(404)
+    expires = (datetime.now(timezone.utc) + timedelta(days=180)).replace(microsecond=0)
+    body = "\n".join([
+        f"Contact: mailto:{_settings['contact']}",
+        f"Expires: {expires.isoformat().replace('+00:00', 'Z')}",
+        "Preferred-Languages: ro, en",
+        f"Canonical: {site_url()}/.well-known/security.txt",
         "",
     ])
     return Response(body, mimetype="text/plain")

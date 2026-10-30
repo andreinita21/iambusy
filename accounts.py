@@ -7,6 +7,8 @@ Account maintenance from the command line (run on the server itself).
                                                     copy the activities of a single-user
                                                     IamBusy ``schedule.db`` into an account
     python3 accounts.py list                        show all accounts
+    python3 accounts.py backup [KEEP]               consistent copy of the database into
+                                                    backups/, keeping the newest KEEP (14)
 
 Passwords are asked for interactively (or read from stdin when piped) —
 never pass them as arguments, they would end up in the shell history and
@@ -14,8 +16,11 @@ in the process list.
 """
 
 import getpass
+import glob
+import os
 import sqlite3
 import sys
+import time
 
 import schedule_config as config
 import auth
@@ -99,6 +104,29 @@ def list_accounts() -> None:
               f"{u['activity_count']:>3} activities  {u['session_count']} devices  {flags}")
 
 
+BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backups")
+
+
+def backup(keep: int = 14) -> None:
+    """Online backup (safe while the app is running), then drop the oldest copies.
+
+    Also the daily housekeeping: old rate-limit records and expired sessions go.
+    """
+    db.purge_expired()
+    os.makedirs(BACKUP_DIR, mode=0o700, exist_ok=True)
+    target = os.path.join(BACKUP_DIR, time.strftime("schedule-%Y%m%d-%H%M%S.db"))
+    src, dst = sqlite3.connect(db.DB_PATH), sqlite3.connect(target)
+    with dst:
+        src.backup(dst)
+    src.close()
+    dst.close()
+    os.chmod(target, 0o600)
+    copies = sorted(glob.glob(os.path.join(BACKUP_DIR, "schedule-*.db")))
+    for old in copies[:-keep]:
+        os.remove(old)
+    print(f"Backup written to {target}; {min(len(copies), keep)} kept.")
+
+
 def main(argv: list) -> None:
     db.init_db()
     if len(argv) >= 1 and argv[0] == "create-admin" and len(argv) <= 2:
@@ -109,6 +137,8 @@ def main(argv: list) -> None:
         import_schedule(argv[1], argv[2])
     elif argv == ["list"]:
         list_accounts()
+    elif len(argv) in (1, 2) and argv[0] == "backup" and (len(argv) == 1 or argv[1].isdigit()):
+        backup(max(1, int(argv[1])) if len(argv) == 2 else 14)
     else:
         sys.exit(__doc__.strip())
 

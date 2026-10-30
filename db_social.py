@@ -7,6 +7,7 @@ is allowed to touch; the HTTP layer never builds SQL itself.
 """
 
 import json
+import re
 import sqlite3
 from typing import Iterable, Optional
 
@@ -673,6 +674,15 @@ def get_usable_friend_link(code: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def count_invited_since(user_id: int, since: int) -> int:
+    """Accounts created through *user_id*'s friend links after *since*."""
+    conn = _get_conn()
+    n = conn.execute("SELECT COUNT(*) FROM users WHERE invited_by = ? AND created_at > ?",
+                     (user_id, since)).fetchone()[0]
+    conn.close()
+    return n
+
+
 def use_friend_link(code: str, user_id: int) -> Optional[str]:
     """An existing account accepts a friend link.
 
@@ -945,11 +955,13 @@ def export_user_data(user_id: int) -> dict:
             "SELECT m.group_id, u.username FROM friend_group_members m "
             "JOIN friend_groups gr ON gr.id = m.group_id JOIN users u ON u.id = m.member_id "
             "WHERE gr.owner_id = ? ORDER BY m.group_id", user_id),
+        # subject: "all", a group id (see "groups") or a friend's username
         "category_rules": rows(
-            "SELECT r.category_id, r.subject_type, r.subject_id, r.level FROM category_rules r "
+            "SELECT r.category_id, r.subject_type, CASE r.subject_type WHEN 'friend' THEN (SELECT username FROM users WHERE id = r.subject_id) WHEN 'group' THEN CAST(r.subject_id AS TEXT) ELSE 'all' END AS subject, r.level FROM category_rules r "
             "JOIN categories c ON c.id = r.category_id WHERE c.user_id = ?", user_id),
-        "activity_rules": rows("SELECT activity_id, subject_type, subject_id, level "
-                               "FROM activity_rules WHERE user_id = ?", user_id),
+        "activity_rules": rows(
+            "SELECT r.activity_id, r.subject_type, CASE r.subject_type WHEN 'friend' THEN (SELECT username FROM users WHERE id = r.subject_id) WHEN 'group' THEN CAST(r.subject_id AS TEXT) ELSE 'all' END AS subject, r.level FROM activity_rules r "
+            "WHERE r.user_id = ?", user_id),
         "notifications": rows(
             "SELECT n.kind, actor.username AS actor, n.text, n.created_at, n.read_at "
             "FROM notifications n LEFT JOIN users actor ON actor.id = n.actor_id "
@@ -957,9 +969,17 @@ def export_user_data(user_id: int) -> dict:
         "friend_links": rows("SELECT code, note, max_uses, uses, expires_at, revoked, created_at "
                              "FROM friend_links WHERE user_id = ? ORDER BY id", user_id),
         "share_links": rows("SELECT * FROM share_links WHERE user_id = ? ORDER BY id", user_id),
+        "share_link_rules": rows(
+            "SELECT r.link_id, r.category_id, r.level FROM share_link_rules r "
+            "JOIN share_links l ON l.id = r.link_id WHERE l.user_id = ?", user_id),
         "devices": rows("SELECT user_agent, ip, persistent, created_at, last_seen, expires_at "
                         "FROM sessions WHERE user_id = ? ORDER BY id", user_id),
     }
+    data["security_records"] = rows(
+        "SELECT key, ts FROM auth_attempts WHERE key IN (?, ?, ?) OR key LIKE ? ESCAPE '\\' "
+        "ORDER BY ts",
+        f"login-user:{user['username']}", f"search:{user_id}", f"delete:{user_id}",
+        "login:%:" + re.sub(r"([\\%_])", r"\\\1", user["username"]))
     for link in data["share_links"]:
         link.pop("user_id", None)
         link["has_pin"] = bool(link.pop("pin_hash", None))

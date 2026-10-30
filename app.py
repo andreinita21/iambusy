@@ -51,7 +51,7 @@ from db import (
 import db_social
 from visibility import DEFAULT_LEVEL
 from calendar_data import (
-    Calendar, Viewer, build_day_context, day_summaries, parse_range, parse_week1,
+    Calendar, Viewer, build_day_context, day_summaries, parse_range, parse_week1, view_date,
 )
 import auth
 from auth import login_required
@@ -95,6 +95,7 @@ app.register_blueprint(auth.bp)
 app.register_blueprint(social.bp)
 app.register_blueprint(sharing.bp)
 app.jinja_env.globals["csrf_token"] = auth.csrf_token
+app.jinja_env.globals["asset"] = public.asset_url
 app.context_processor(public.template_globals)
 app.register_error_handler(HTTPException, public.handle_http_error)
 app.register_error_handler(Exception, public.handle_unexpected_error)
@@ -247,10 +248,7 @@ def _week1_start() -> date:
 
 
 def _parse_view_date() -> date:
-    try:
-        return datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
-    except ValueError:
-        return datetime.now().date()
+    return view_date(request.args)
 
 
 def _rules_json(rules: dict) -> list[dict]:

@@ -22,6 +22,8 @@
 -   **One address**: with `SITE_URL` set, any other host name and plain `http://` get a 301 (308 for form posts) to it, and copied links are built from it. Requests by IP or to `localhost` are left alone.
 -   **Search & previews**: `robots.txt`, `sitemap.xml`, canonical links, Open Graph / Twitter cards (share links and friend links get their own titles; PIN-protected links reveal nothing), JSON-LD, a web app manifest with PNG / maskable icons and `favicon.ico`.
 -   **Error pages**: branded 404 / 405 / 500 … pages; `/api/` routes answer with JSON instead.
+-   **`/.well-known/security.txt`** (RFC 9116) with the contact address.
+-   **Cache busting**: CSS / JS URLs carry a content hash (`?v=…`), so an update is never mixed with stale files cached by browsers or Cloudflare.
 -   **No third parties in the page**: the fonts (Space Grotesk, IBM Plex Mono — OFL) are served from `static/fonts/`, so the CSP is `'self'` only and no cookie banner is needed (only strictly necessary cookies).
 
 ## 🔐 Accounts & security
@@ -37,20 +39,29 @@
 | Session tokens | 256-bit random, `HttpOnly` + `SameSite=Lax` + `Secure` cookie; only the SHA-256 is stored, so a leaked database can't be replayed |
 | Revocation | sessions live server-side: logout, password change, reset or disabling an account kills them immediately |
 | CSRF | per-session token on every form and API call, plus a same-origin `Origin` check |
-| Brute force | failed logins limited per IP+account (5 / 15 min), per account and per IP; invite-code guessing limited per IP |
+| Brute force | failed logins limited per IP+account (5 / 15 min), per account and per IP; a browser that has logged in to the account before (`iambusy_device` cookie) isn't held by the per-account limit, so nobody can lock the owner out on purpose; sign-ups (successful ones too) and invite-code guesses limited per IP; at most 10 accounts a day through one person's friend links |
 | Enumeration | identical answer and timing for unknown user / wrong password / disabled account |
 | Data isolation | every query is scoped to the logged-in user id |
 | Browser hardening | strict Content-Security-Policy (no inline scripts, nothing loaded from other sites), `X-Frame-Options: DENY`, `nosniff`, HSTS, `Cache-Control: no-store` |
 | On disk | `schedule.db`, `.secret_key` and `schedule_config.py` are mode `0600` and ignored by git |
 | Friends' calendars | only accepted friends can open them; everything they see goes through one masking layer (`calendar_data.py`), so "busy" blocks never carry a title, place, category or participant list, and overlapping busy blocks are merged |
-| Search | exact username only (no browsing), 40 lookups / 10 min per user; blocked users look like unknown ones |
-| Share links | 128-bit random token, revocable / regenerable; optional scrypt-hashed PIN limited to 5 tries / 15 min per visitor and 30 / hour per link; `noindex`; dates outside the link's window are never sent, not even to the status line |
+| Search | exact username only (no browsing), 40 lookups / 10 min per user (friend requests by username count too); blocked users look like unknown ones; you can only block people you have a request or friendship with |
+| Invites | the creator's privacy follows their activity: if they don't show it in full to all their friends, participants' friends and links see only "busy"; someone who declined is an ordinary friend again |
+| Deleted data | `secure_delete` overwrites removed rows; daily backups are kept 14 days |
+| Share links | 128-bit random token, revocable / regenerable; optional scrypt-hashed PIN limited to 5 tries / 15 min per visitor, 30 / hour and 100 / day per link; `noindex`; dates outside the link's window are never sent, not even to the status line |
 
 ```bash
 python3 accounts.py create-admin              # first administrator (asks for the password)
 python3 accounts.py reset-password USERNAME   # forgot-password rescue, run on the server
 python3 accounts.py import-schedule USERNAME /path/to/old/schedule.db
 python3 accounts.py list
+python3 accounts.py backup [KEEP]             # online copy into backups/ (keeps 14) + daily cleanup
+```
+
+A daily cron job runs the backup (and drops rate-limit records older than a day):
+
+```
+17 4 * * * cd /home/andrei/iambusy-auth && /usr/bin/python3 accounts.py backup 14 >/dev/null 2>>backups/backup-errors.log
 ```
 
 ## 👥 Friends & sharing

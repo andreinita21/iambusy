@@ -171,7 +171,7 @@
                 <label for="pin">PIN (opțional)</label>
                 <input class="input" type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]{4,8}"
                     maxlength="8" autocomplete="new-password" placeholder="{{ 'neschimbat' if e and e.has_pin else '4–8 cifre' }}">
-                <span class="hint">Trimite PIN-ul separat de link.</span>
+                <span class="hint">Trimite PIN-ul separat de link. Cu 6 cifre sau mai multe e mult mai greu de ghicit.</span>
                 {% if e and e.has_pin %}
                 <label class="check"><input type="checkbox" name="clear_pin" value="1"><span class="check-box"></span><span class="check-text">Scoate PIN-ul</span></label>
                 {% endif %}
@@ -188,4 +188,4 @@
 </section>
 {% endblock %}
 
-{% block scripts %}<script src="/static/social.js"></script>{% endblock %}
+{% block scripts %}<script src="{{ asset('social.js') }}"></script>{% endblock %}

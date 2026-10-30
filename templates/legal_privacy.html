@@ -29,9 +29,10 @@
         deschis. PIN-ul unui link e păstrat doar ca hash.</li>
     <li><b>Dispozitivele conectate:</b> tipul de browser (user agent), adresa IP, momentul conectării și
         al ultimei activități — ca să le poți vedea și deconecta din pagina contului.</li>
-    <li><b>Securitate:</b> încercările eșuate (de autentificare, de PIN, de coduri de invitație) legate de
-        adresa IP sau de numele de utilizator, ca să oprim ghicirea parolelor. Se șterg automat după
-        24 de ore.</li>
+    <li><b>Securitate:</b> încercările eșuate (de autentificare — cu numele de utilizator tastat —, de PIN,
+        de coduri de invitație), conturile noi create de la o adresă IP și căutările de prieteni, legate
+        de adresa IP sau de cont, ca să oprim ghicirea parolelor și abuzurile. Se șterg automat în cel mult
+        două zile.</li>
 </ul>
 <p>Cine deschide un link public fără cont nu ne lasă alte date în afara celor tehnice de mai sus
     (adresa IP, doar dacă greșește PIN-ul).</p>
@@ -50,11 +51,16 @@
     <li><b>Tu</b> — totul.</li>
     <li><b>Prietenii tăi</b> — doar ce permit regulile tale de vizibilitate: complet, doar „ocupat” sau
         nimic. Implicit văd doar „ocupat”, fără detalii.</li>
-    <li><b>Participanții la o activitate</b> — activitatea respectivă și lista celor invitați.</li>
+    <li><b>Participanții la o activitate</b> — activitatea respectivă, cine mai e invitat și ce a
+        răspuns fiecare.</li>
+    <li><b>Prietenii celor care îți acceptă invitația</b> — activitatea apare și în calendarul lor, deci
+        prietenii lor (și linkurile lor publice) văd că sunt ocupați. Titlul și detaliile apar acolo doar
+        dacă tu le arăți tuturor prietenilor tăi și le arată și ei.</li>
     <li><b>Oricine are un link public</b> creat de tine — exact intervalul și nivelul de detaliu pe care
         le-ai ales, până expiră sau până îl dezactivezi.</li>
     <li><b>Administratorul</b> — are acces tehnic la server și vede în panoul de administrare lista
-        conturilor (nume, data creării, ultima autentificare, cine i-a invitat).</li>
+        conturilor (nume, data creării, ultima autentificare, cine i-a invitat, numărul de activități și de
+        dispozitive conectate).</li>
 </ul>
 
 <h2>5. Furnizori</h2>
@@ -73,8 +79,12 @@
     <tbody>
         <tr><td class="mono">iambusy_auth</td><td>Te ține autentificat pe acest dispozitiv.</td>
             <td>{{ site.session_days }} de zile de la ultima vizită ({{ site.short_session_hours }} ore fără „Ține-mă minte”)</td></tr>
-        <tr><td class="mono">iambusy_csrf</td><td>Protejează formularele împotriva cererilor false și ține
-            minte un link public deblocat cu PIN.</td><td>{{ site.session_days }} de zile</td></tr>
+        <tr><td class="mono">iambusy_csrf</td><td>Protejează formularele împotriva cererilor false; ține
+            minte linkurile publice deblocate cu PIN și pe cele deschise deja (ca o vizită să nu fie numărată
+            de două ori).</td><td>{{ site.session_days }} de zile</td></tr>
+        <tr><td class="mono">iambusy_device</td><td>Ține minte că acest browser s-a mai autentificat în cont
+            (o amprentă criptografică, nu numele tău), ca protecția anti-ghicire să nu te blocheze pe tine
+            când altcineva încearcă parole.</td><td>1 an</td></tr>
         <tr><td class="mono">iambusy-theme</td><td>Tema aleasă (luminoasă / întunecată), în stocarea locală a
             browserului — nu pleacă spre server.</td><td>Până o ștergi</td></tr>
     </tbody>
@@ -82,11 +92,13 @@
 </div>
 
 <h2>7. Cât timp le păstrăm</h2>
-<p>Cât timp ai cont. Sesiunile expiră singure, încercările eșuate se șterg după 24 de ore, iar din
+<p>Cât timp ai cont. Sesiunile expiră singure, înregistrările de securitate se șterg în cel mult două
+    zile, iar din
     notificări rămân doar ultimele 200. Când îți ștergi contul (sau îl șterge administratorul), contul și
-    tot ce ține de el dispar imediat din baza de date: orarul, prieteniile, regulile, linkurile,
-    dispozitivele și activitățile la care i-ai invitat pe alții. Copiile de siguranță ale serverului, dacă
-    există, pot păstra datele un timp limitat, până sunt înlocuite.</p>
+    tot ce ține de el dispar imediat din baza de date (și sunt suprascrise pe disc): orarul, prieteniile, regulile, linkurile,
+    dispozitivele și activitățile la care i-ai invitat pe alții. Baza de date are o copie de siguranță zilnică,
+    păstrată pe același server; copiile mai vechi de 14 zile se șterg automat, așa că după cel mult 14 zile
+    datele tale nu mai există nici acolo.</p>
 
 <h2>8. Drepturile tale</h2>
 <p>Ai dreptul de acces, de rectificare, de ștergere, de restricționare, de portabilitate și de

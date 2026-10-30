@@ -45,6 +45,9 @@ def _get_conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    # Deleted rows (a deleted account, a removed activity) are overwritten on
+    # disk instead of lingering in free pages.
+    conn.execute("PRAGMA secure_delete=ON")
     return conn
 
 
@@ -624,6 +627,16 @@ def record_attempt(*keys: str) -> None:
     conn.executemany(
         "INSERT INTO auth_attempts (key, ts) VALUES (?, ?)", [(k, now) for k in keys]
     )
+    conn.commit()
+    conn.close()
+
+
+def purge_expired() -> None:
+    """Drop rate-limit records older than a day and expired sessions (run daily)."""
+    now = _now()
+    conn = _get_conn()
+    conn.execute("DELETE FROM auth_attempts WHERE ts < ?", (now - 86400,))
+    conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
     conn.commit()
     conn.close()
 

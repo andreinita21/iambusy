@@ -32,7 +32,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import db
 import db_social
 from auth import absolute_url, client_ip, login_required, _limited
-from calendar_data import Calendar, Viewer, Window, build_day_context, day_summaries, parse_range
+from calendar_data import (
+    Calendar, Viewer, Window, build_day_context, day_summaries, parse_date, parse_range,
+)
 from schedule_engine import format_date_ro
 from visibility import LEVEL_LABELS, LEVELS
 
@@ -57,6 +59,7 @@ TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 PIN_RE = re.compile(r"^\d{4,8}$")
 LIMIT_PIN_IP = (5, 15 * 60)     # one visitor guessing one link's PIN
 LIMIT_PIN_LINK = (30, 60 * 60)  # many visitors guessing one link's PIN
+LIMIT_PIN_LINK_DAY = (100, 24 * 60 * 60)  # 4 digits would otherwise fall in ~2 weeks
 PIN_HASH = "scrypt:32768:8:1"
 
 
@@ -331,9 +334,8 @@ def share_view(token):
     owner = db.get_user(link["user_id"])
     now = datetime.now()
     window = link_window(link, now.date())
-    try:
-        view_date = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
-    except ValueError:
+    view_date = parse_date(request.args.get("date"))
+    if view_date is None:
         view_date = window.clamp(now.date()) if window else now.date()
 
     cal = Calendar(owner, _settings["default_week1_start"])
@@ -362,7 +364,9 @@ def share_pin(token):
         return redirect(url_for("sharing.share_view", token=token))
     ip_key = f"pin:{link['id']}:{client_ip()}"
     link_key = f"pin:{link['id']}"
-    if _limited(ip_key, LIMIT_PIN_IP) or _limited(link_key, LIMIT_PIN_LINK):
+    day_key = f"pin-day:{link['id']}"
+    if (_limited(ip_key, LIMIT_PIN_IP) or _limited(link_key, LIMIT_PIN_LINK)
+            or _limited(day_key, LIMIT_PIN_LINK_DAY)):
         flash("Prea multe încercări. Așteaptă câteva minute.", "error")
         return render_template("share_pin.html", token=token), 429
     pin = (request.form.get("pin") or "").strip()
@@ -373,7 +377,7 @@ def share_pin(token):
         session.permanent = True
         db.clear_attempts(ip_key)
         return redirect(url_for("sharing.share_view", token=token))
-    db.record_attempt(ip_key, link_key)
+    db.record_attempt(ip_key, link_key, day_key)
     flash("PIN greșit.", "error")
     return render_template("share_pin.html", token=token), 401
 

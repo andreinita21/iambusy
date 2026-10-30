@@ -27,7 +27,7 @@ from schedule_engine import (
     free_windows, hhmm_to_minutes, is_odd_week, occurs_on, prepare_blocks_for_ui,
     relative_day_ro,
 )
-from visibility import friend_level, link_level
+from visibility import friend_level, general_level, link_level
 
 
 def parse_week1(raw, default: date) -> date:
@@ -68,11 +68,22 @@ class Calendar:
         for a in db.get_all_activities(owner["id"]):
             self.items.append({**a, "cat": a["category_id"], "week1": self.week1,
                                "shared": False, "creator_id": owner["id"]})
+        creator_rules: dict[int, tuple] = {}
         for s in db_social.shared_activities(owner["id"], statuses=("accepted",)):
+            creator = s["owner_id"]
+            if creator not in creator_rules:
+                creator_rules[creator] = (db_social.activity_rules(creator),
+                                          db_social.category_rules(creator))
+            act_r, cat_r = creator_rules[creator]
             self.items.append({
                 **s, "cat": s["my_category_id"], "shared": True, "creator_id": s["owner_id"],
                 # Weeks of a shared activity follow its creator's academic calendar.
                 "week1": parse_week1(s["owner_week1_start"], default_week1),
+                # What the creator lets all their friends see.  Anything less
+                # than "full" keeps the details private when the activity shows
+                # up for *my* friends or links — they still see that I'm busy.
+                "creator_level": general_level(act_r.get(s["id"], {}),
+                                               cat_r.get(s["owner_category_id"], {})),
             })
 
         self.participants = db_social.participants(i["id"] for i in self.items)
@@ -82,7 +93,9 @@ class Calendar:
         self._with: dict[int, list] = {}
         for it in self.items:
             people = self.participants.get(it["id"], [])
-            self._insiders[it["id"]] = {it["creator_id"]} | {p["user_id"] for p in people}
+            # Someone who declined is an ordinary friend again.
+            self._insiders[it["id"]] = {it["creator_id"]} | {
+                p["user_id"] for p in people if p["status"] != "declined"}
             names = [p["display_name"] for p in people
                      if p["status"] == "accepted" and p["user_id"] != owner["id"]]
             if it["shared"]:
@@ -98,8 +111,13 @@ class Calendar:
         if viewer.kind == "friend":
             if viewer.user_id in self._insiders.get(item["id"], ()):
                 return "full"
-            return friend_level(act_rules, cat_rules, viewer.user_id, viewer.groups)
-        return link_level(viewer.preset, viewer.link_rules.get(item["cat"]), act_rules, cat_rules)
+            level = friend_level(act_rules, cat_rules, viewer.user_id, viewer.groups)
+        else:
+            level = link_level(viewer.preset, viewer.link_rules.get(item["cat"]), act_rules,
+                               cat_rules)
+        if item["shared"] and item["creator_level"] != "full" and level == "full":
+            level = "busy"
+        return level
 
     def entries_on(self, d: date, viewer: Viewer) -> list[dict]:
         visible: list[dict] = []
@@ -189,12 +207,27 @@ class Window:
 
 # ═════════════════════════════════════════════ View builders ══
 
+MIN_YEAR, MAX_YEAR = 2000, 2100  # far from date.min / date.max, so ±days never overflows
+
+
+def parse_date(raw) -> Optional[date]:
+    """``YYYY-MM-DD`` from a URL → date, or ``None`` if invalid / out of range."""
+    try:
+        d = datetime.strptime(raw or "", "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+    return d if MIN_YEAR <= d.year <= MAX_YEAR else None
+
+
+def view_date(args) -> date:
+    """The ``date`` query parameter of a day view (today when missing / invalid)."""
+    return parse_date(args.get("date")) or datetime.now().date()
+
+
 def parse_range(args, max_days: int = 62):
     """``from`` / ``to`` query parameters → ``(start, end, error)``."""
-    try:
-        start = datetime.strptime(args.get("from", ""), "%Y-%m-%d").date()
-        end = datetime.strptime(args.get("to", ""), "%Y-%m-%d").date()
-    except ValueError:
+    start, end = parse_date(args.get("from")), parse_date(args.get("to"))
+    if start is None or end is None:
         return None, None, "from/to must be YYYY-MM-DD"
     if end < start:
         return None, None, "to must be after from"

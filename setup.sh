@@ -150,7 +150,7 @@ After=network.target
 User=$(id -un)
 Group=$(id -gn)
 WorkingDirectory=$APP_DIR
-ExecStart=$APP_DIR/.venv/bin/gunicorn --workers 2 --bind $HOST:$PORT app:app
+ExecStart=$APP_DIR/.venv/bin/gunicorn --workers 3 --threads 4 --bind $HOST:$PORT app:app
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1

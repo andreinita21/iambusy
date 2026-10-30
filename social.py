@@ -31,7 +31,7 @@ from auth import (
     normalize_username, _limited,
 )
 from calendar_data import (
-    Calendar, Viewer, build_day_context, day_summaries, live_status, parse_range,
+    Calendar, Viewer, build_day_context, day_summaries, live_status, parse_range, view_date,
 )
 from schedule_engine import (
     DAY_DISPLAY, DAYS, find_conflicts, format_date_ro, free_between, merge_intervals, minutes_to_hhmm,
@@ -254,6 +254,12 @@ def notifications():
 def friend_request():
     me = g.user
     username = normalize_username(request.form.get("username"))[:64]
+    # Counts as a lookup: the answer tells whether the username exists.
+    key = f"search:{me['id']}"
+    if _limited(key, LIMIT_SEARCH):
+        flash("Prea multe căutări. Încearcă din nou în câteva minute.", "error")
+        return redirect(url_for("social.friends"))
+    db.record_attempt(key)
     other = db.get_user_by_username(username)
     if other is None or not other["is_active"] or other["id"] == me["id"]:
         flash("Nu există niciun cont cu acest nume de utilizator.", "error")
@@ -301,7 +307,9 @@ def friend_remove(other_id):
 @login_required
 def friend_block(other_id):
     other = db.get_user(other_id)
-    if other is None or other_id == g.user["id"]:
+    # Only people you already have a request or friendship with — otherwise
+    # walking through ids would list every account.
+    if other is None or db_social.friendship_between(g.user["id"], other_id) is None:
         abort(404)
     db_social.block_user(g.user["id"], other_id)
     flash(f"@{other['username']} a fost blocat: nu te mai poate găsi și nu îți mai poate trimite "
@@ -320,10 +328,7 @@ def friend_unblock(other_id):
 # ═════════════════════════════════════════ Friend calendars ══
 
 def _view_date() -> date:
-    try:
-        return datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
-    except ValueError:
-        return datetime.now().date()
+    return view_date(request.args)
 
 
 @bp.route("/friends/<username>")

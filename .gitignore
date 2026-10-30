@@ -21,3 +21,4 @@ schedule.db-wal
 
 # Database backups
 schedule.db.bak-*
+backups/
